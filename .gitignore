@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+build/
+*.xcodeproj/
+App/Info.plist
+Payload/
+*.ipa
+__pycache__/
+*.pyc
+.venv/
+Packages/SleepCore/.swiftpm/

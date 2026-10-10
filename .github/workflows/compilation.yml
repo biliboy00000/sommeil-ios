@@ -1,0 +1,86 @@
+# Compilation automatique sur un Mac de GitHub, à chaque modification.
+# 1. Tests du cœur (SleepCore).
+# 2. Compilation de l'app pour iPhone, sans signature (Sideloadly signe ensuite avec ton identifiant Apple).
+# 3. Publication du fichier Sommeil.ipa dans « Releases » (lien fixe vers la dernière version).
+name: Compilation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: compilation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests du cœur
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version de Xcode
+        run: xcodebuild -version
+      - name: Tests unitaires de SleepCore
+        run: swift test --package-path Packages/SleepCore
+
+  app:
+    name: App iPhone
+    runs-on: macos-26
+    needs: tests
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer XcodeGen
+        run: brew install xcodegen
+      - name: Générer le projet Xcode
+        run: xcodegen generate
+      - name: Compiler pour iPhone (non signé)
+        run: |
+          xcodebuild -project Sommeil.xcodeproj -scheme Sommeil -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || {
+              echo "::group::Erreurs de compilation"
+              grep -E "error:" build.log | sort -u | head -80
+              echo "::endgroup::"
+              tail -60 build.log
+              exit 1
+            }
+          echo "Avertissements : $(grep -cE ' warning:' build.log || true)"
+          grep -E " warning:" build.log | grep -v "/SourcePackages/" | sort -u | head -40 || true
+      - name: Fabriquer le fichier .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/Sommeil.app Payload/
+          zip -qry Sommeil.ipa Payload
+          ls -lh Sommeil.ipa
+      - name: Garder le journal de compilation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-compilation
+          path: build.log
+          if-no-files-found: ignore
+      - name: Garder l'app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sommeil-ipa
+          path: Sommeil.ipa
+      - name: Publier la version (lien de téléchargement fixe)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.${{ github.run_number }}
+          name: Sommeil 0.1.${{ github.run_number }}
+          make_latest: true
+          files: Sommeil.ipa
+          body: |
+            Version compilée automatiquement depuis ${{ github.sha }}.
+            À installer avec Sideloadly (voir LISEZ-MOI).
