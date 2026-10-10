@@ -13,6 +13,7 @@ Usage : python verifier_seance.py <dossier de la séance>   (écrit aussi verifi
 import os
 import sys
 import json
+import datetime
 
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
@@ -191,6 +192,80 @@ def segments_immobiles(seance, t_rel, ux, uy, uz, est_test):
         idx = np.linspace(0, len(segments) - 1, 40).astype(int)
         segments = [segments[i] for i in idx]
     return segments
+
+
+def qualite_cardiaque(signaux, fs=FS):
+    """Qualité combinée des battements sur une fenêtre (gyro X, gyro Y, accél Z…), et pouls."""
+    envs, poids, meilleure = [], [], 0.0
+    for x in signaux:
+        _, q = pouls(x, fs)
+        meilleure = max(meilleure, q)
+        e = enveloppe_cardiaque(x, fs)
+        if e.std() > 0:
+            envs.append(e / e.std())
+            poids.append(q * q)
+    if not envs or sum(poids) <= 0:
+        return meilleure, None
+    mix = np.sum([p * e for p, e in zip(poids, envs)], axis=0)
+    mix -= mix.mean()
+    lag_min, lag_max = int(fs * 60 / 150), int(np.ceil(fs * 60 / 40))
+    pic = pic_fondamental(autocorrelation(mix, np.arange(lag_min - 1, lag_max + 2)), lag_min - 1)
+    if not pic:
+        return meilleure, None
+    q = float(np.clip(pic[1] * len(mix) / (len(mix) - pic[0]), 0, 1))
+    return max(q, meilleure), 60 * fs / pic[0]
+
+
+def position(g, calib):
+    """Position du corps d'après la gravité, comparée à la calibration (sur le dos).
+    Gauche/droite suppose le téléphone en hauteur, haut vers la tête."""
+    if calib is None:
+        return "?", float("nan")
+    g = np.asarray(g, dtype=float)
+    g = g / max(np.linalg.norm(g), 1e-9)
+    g0 = np.asarray(calib, dtype=float)
+    angle = float(np.degrees(np.arccos(np.clip(np.dot(g, g0), -1, 1))))
+    if angle < 40:
+        return "dos", angle
+    if angle > 140:
+        return "ventre", angle
+    return ("côté G" if np.cross(g0, g)[1] < 0 else "côté D"), angle
+
+
+def tenue_telephone(t_rel, col, calib, duree_bloc):
+    """Qualité des battements au fil de la séance, par blocs, pour voir si le téléphone a tenu."""
+    blocs = []
+    fin = t_rel[-1]
+    debuts = list(np.arange(0, fin - duree_bloc / 2, duree_bloc))      # dernier bloc gardé s'il fait au moins la moitié
+    for a in debuts:
+        a, b = float(a), float(min(a + duree_bloc, fin))
+        qs, calme, total, poss = [], 0, 0, []
+        for fa, fb in fenetres(a, b, 10, 10):
+            m = selection(t_rel, fa, fb)
+            if m.sum() < FS * 9:
+                continue
+            total += 1
+            if agitation(col["ux"][m], col["uy"][m], col["uz"][m]) > 0.02:
+                continue
+            calme += 1
+            q, _ = qualite_cardiaque([col["rx"][m], col["ry"][m], col["uz"][m]])
+            qs.append(q)
+            poss.append(position([col["gx"][m].mean(), col["gy"][m].mean(), col["gz"][m].mean()], calib)[0])
+        if total == 0:
+            continue
+        # Position la plus fréquente du bloc (une moyenne mélangerait deux côtés).
+        pos = max(set(poss), key=poss.count) if poss else "bouge"
+        blocs.append({"debut_s": float(a), "position": pos,
+                      "calme": calme / total, "qualite": float(np.median(qs)) if qs else None,
+                      "nets": float(np.mean(np.array(qs) >= 0.5)) if qs else None})
+    # Glissement possible : la qualité s'effondre et ne revient pas, sans changement de position.
+    for i in range(1, len(blocs) - 1):
+        avant, ici, apres = blocs[i - 1], blocs[i], blocs[i + 1]
+        if (avant["qualite"] or 0) >= 0.45 and ici["qualite"] is not None and apres["qualite"] is not None \
+                and ici["qualite"] < 0.6 * avant["qualite"] and apres["qualite"] < 0.6 * avant["qualite"] \
+                and ici["position"] == avant["position"]:
+            ici["alerte"] = "signal effondré sans changement de position : le téléphone a peut-être glissé"
+    return blocs
 
 
 def temps_txt(s):
@@ -414,6 +489,28 @@ def verifier(dossier):
             g = g / np.linalg.norm(g)
             angle = float(np.degrees(np.arccos(np.clip(np.dot(g, calib), -1, 1)))) if calib else float("nan")
             r("%-44s gravité (%.2f, %.2f, %.2f) · %.0f° par rapport à la calibration" % (nom, g[0], g[1], g[2], angle))
+
+    # ---------------------------------------------------------------- tenue du téléphone
+    if t_rel[-1] >= 240:
+        duree_bloc = 600 if t_rel[-1] > 3600 else 60
+        r.titre("Tenue du téléphone (battements nets au fil de la séance, blocs de %d min)" % (duree_bloc // 60))
+        calib = (info.get("calibration") or {}).get("gravity")
+        blocs = tenue_telephone(t_rel, col, calib, duree_bloc)
+        r.resultats["tenue"] = blocs
+        r("%-9s %-8s %7s %9s %12s" % ("heure", "position", "calme", "qualité", "battements nets"))
+        for bloc in blocs:
+            heure = datetime.datetime.fromtimestamp(float(s.vers_unix(s.debut_uptime + bloc["debut_s"]))).strftime("%H:%M")
+            q = "%.2f" % bloc["qualite"] if bloc["qualite"] is not None else "—"
+            nets = "%.0f %%" % (100 * bloc["nets"]) if bloc["nets"] is not None else "—"
+            r("%-9s %-8s %6.0f %% %9s %12s%s" % (heure, bloc["position"], 100 * bloc["calme"], q, nets,
+                                                 "   ← " + bloc["alerte"] if bloc.get("alerte") else ""))
+        qualites = [b["qualite"] for b in blocs if b["qualite"] is not None]
+        if qualites:
+            bons = np.mean(np.array(qualites) >= 0.5)
+            r("→ Battements nets dans %.0f %% des blocs calmes. %s" % (
+                100 * bons, "Le téléphone a bien tenu." if bons >= 0.8 else
+                "Le signal faiblit par moments : vérifie le serrage et l'emplacement."))
+        r("(gauche/droite : en supposant le téléphone en hauteur, le haut vers la tête)")
 
     # ---------------------------------------------------------------- son
     r.titre("6. Son")

@@ -125,6 +125,52 @@ class TestsSeance(unittest.TestCase):
         self.assertAlmostEqual(float(np.sqrt(np.mean(x ** 2))), 0.1 / np.sqrt(2), delta=0.005)
 
 
+class TestsTenue(unittest.TestCase):
+    """Le contrôle de tenue repère un téléphone qui glisse (battements qui disparaissent sans changement de position)."""
+
+    def signaux(self, duree=1800, glisse_a=900, graine=4):
+        rng = np.random.default_rng(graine)
+        fs = 100
+        n = duree * fs
+        t = np.arange(n) / fs
+        battements = np.cumsum(0.85 + 0.02 * rng.standard_normal(int(duree / 0.8)))
+        coeur = np.zeros(n)
+        for b in battements[battements < duree - 1]:
+            i = int(b * fs)
+            k = np.arange(15)
+            coeur[i:i + 15] += np.exp(-k / 4) * np.sin(2 * np.pi * 13 * k / fs)
+        gain = np.where(t < glisse_a, 1.0, 0.08)            # après le glissement, presque plus de signal
+        bruit = lambda: 0.15 * rng.standard_normal(n)
+        col = {"rx": 0.02 * (gain * coeur + bruit()), "ry": 0.01 * (gain * coeur + bruit()),
+               "uz": 0.005 * (gain * coeur + bruit()),
+               "ux": 0.0005 * rng.standard_normal(n), "uy": 0.0005 * rng.standard_normal(n),
+               "gx": np.zeros(n), "gy": np.full(n, 0.1), "gz": np.full(n, -0.995)}
+        return t, col
+
+    def test_glissement_detecte(self):
+        t, col = self.signaux()
+        blocs = verifier_seance.tenue_telephone(t, col, [0.0, 0.1, -0.995], 300)
+        self.assertEqual(len(blocs), 6)
+        self.assertTrue(all(b["position"] == "dos" for b in blocs))
+        self.assertGreater(blocs[0]["qualite"], 0.5)
+        self.assertLess(blocs[4]["qualite"], 0.3)
+        alertes = [i for i, b in enumerate(blocs) if b.get("alerte")]
+        self.assertEqual(alertes, [3])
+
+    def test_pas_d_alerte_si_tout_va_bien(self):
+        t, col = self.signaux(glisse_a=10 ** 6)
+        blocs = verifier_seance.tenue_telephone(t, col, [0.0, 0.1, -0.995], 300)
+        self.assertFalse(any(b.get("alerte") for b in blocs))
+        self.assertTrue(all(b["qualite"] > 0.5 for b in blocs))
+
+    def test_positions(self):
+        g0 = [0.0, 0.1, -0.995]
+        self.assertEqual(verifier_seance.position([0.0, 0.1, -0.99], g0)[0], "dos")
+        self.assertEqual(verifier_seance.position([0.97, 0.05, -0.2], g0)[0], "côté G")
+        self.assertEqual(verifier_seance.position([-0.97, 0.05, -0.2], g0)[0], "côté D")
+        self.assertEqual(verifier_seance.position([0.0, -0.1, 0.99], g0)[0], "ventre")
+
+
 @unittest.skipUnless(SIMULATEUR and os.path.exists(SIMULATEUR), "simulateur Swift absent (variable SIMULATEUR)")
 class TestsReception(unittest.TestCase):
     def setUp(self):
