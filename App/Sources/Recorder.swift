@@ -376,10 +376,14 @@ final class Recorder: ObservableObject {
         audio = nil
 
         var summaries: [(SensorStream, [String: Double])] = []
+        var finalCounts: [String: Int] = [:]
         sensorQueue.sync {
             calibrationActive = false
             summaries = motion.trackers.map { ($0.key, $0.value.summaryValues) }
+            finalCounts = motion.counts
         }
+        // Compteurs à jour pour la dernière ligne d'état (ils ne sont rafraîchis que toutes les 5 s).
+        live.samples = finalCounts
         for (stream, values) in summaries {
             log(EventType.stats, "Bilan du flux « \(stream.label) »", values: values, info: ["flux": stream.prefix])
         }

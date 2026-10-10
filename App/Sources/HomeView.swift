@@ -182,6 +182,10 @@ struct HomeView: View {
         if forecast.verdict == .insuffisant || forecast.verdict == .juste, let predicted = forecast.predicted {
             warnings.append("La batterie risque d'être presque vide au réveil (environ \(max(0, predicted).percentText)). "
                             + "Charge le téléphone avant de te coucher, jamais attaché sur toi.")
+        } else if forecast.predicted == nil, let level = model.batteryLevel, level < 0.5 {
+            // Consommation pas encore mesurée : une nuit entière avec moins de la moitié est risquée.
+            warnings.append("La batterie n'est qu'à \(level.percentText). Pour une nuit entière, charge le téléphone "
+                            + "avant de te coucher, jamais attaché sur toi.")
         }
         if let days = model.installation?.daysRemaining(), days < 0.6 {
             warnings.append("L'installation de l'app expire dans moins de 15 heures. Réinstalle-la avec Sideloadly "

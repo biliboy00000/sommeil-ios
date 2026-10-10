@@ -147,9 +147,15 @@ public enum SummaryBuilder {
             BatteryForecast.Point(unix: $0.unix, level: $0.battery ?? 0, unplugged: $0.batteryState == "debranche")
         }
 
-        // Fréquences mesurées.
+        // Fréquences mesurées : le bilan exact des capteurs (écrit à l'arrêt) s'il existe,
+        // sinon une estimation à partir des compteurs de l'état de l'iPhone.
         var rates: [String: Double] = [:]
-        if let first = states.first, let last = states.last, last.uptime - first.uptime > 5 {
+        for event in journal where event.type == EventType.stats {
+            if let stream = event.info?["flux"], let rate = event.values?["frequence_hz"] {
+                rates[stream] = rate
+            }
+        }
+        if rates.isEmpty, let first = states.first, let last = states.last, last.uptime - first.uptime > 5 {
             for (stream, count) in last.samples {
                 let delta = count - (first.samples[stream] ?? 0)
                 rates[stream] = Double(delta) / (last.uptime - first.uptime)

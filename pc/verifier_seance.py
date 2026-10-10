@@ -181,7 +181,9 @@ def segments_immobiles(seance, t_rel, ux, uy, uz, est_test):
         return [(nom, a, b) for nom, a, b in SEGMENTS_TEST if b <= t_rel[-1] + 1]
     segments = []
     fin = t_rel[-1] if len(t_rel) else 0
-    for a, b in fenetres(60, fin, 60, 60):
+    # Tranches de 30 s dès le début (une séance courte en a donc au moins une).
+    duree = 30 if fin >= 30 else max(10, fin)
+    for a, b in fenetres(0, fin, duree, duree):
         m = selection(t_rel, a, b)
         if m.sum() > 50 and agitation(ux[m], uy[m], uz[m]) < 0.008:
             segments.append(("calme à %s" % temps_txt(a), a, b))

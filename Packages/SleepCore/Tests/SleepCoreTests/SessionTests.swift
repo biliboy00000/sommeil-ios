@@ -144,6 +144,17 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(summary.audioCoverage, 7140.0 / 7200.0, accuracy: 1e-6)
     }
 
+    func testMeasuredRatesPreferSensorStats() {
+        let journal = [JournalEvent(unix: 1050, uptime: 50, type: EventType.stats, message: "Bilan",
+                                    values: ["frequence_hz": 99.558], info: ["flux": "dm"])]
+        // Compteurs d'état volontairement en retard (comme sur le premier vrai test).
+        var states = self.states(until: 1048)
+        states[states.count - 1].samples = ["dm": 4742]
+        let summary = SummaryBuilder.build(info: info(endedNormally: true, end: 1049), journal: journal,
+                                           states: states, audio: [], now: 1060)
+        XCTAssertEqual(summary.measuredRates["dm"] ?? 0, 99.558, accuracy: 1e-9)
+    }
+
     func testTimeText() {
         XCTAssertEqual(TimeText.duration(42), "42 s")
         XCTAssertEqual(TimeText.duration(720), "12 min")
