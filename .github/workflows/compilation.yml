@@ -28,6 +28,14 @@ jobs:
         run: xcodebuild -version
       - name: Tests unitaires de SleepCore
         run: swift test --package-path Packages/SleepCore
+      - name: Simulateur de séance
+        run: swift build -c release --package-path Packages/SleepCore --product SessionSimulator
+      - name: Tests du côté PC (Python, sur une séance simulée)
+        run: |
+          python3 -m venv .venv-tests
+          .venv-tests/bin/pip install --quiet numpy scipy av
+          SIMULATEUR="$PWD/Packages/SleepCore/.build/release/SessionSimulator" \
+            .venv-tests/bin/python -m unittest discover -s pc/tests -v
 
   app:
     name: App iPhone

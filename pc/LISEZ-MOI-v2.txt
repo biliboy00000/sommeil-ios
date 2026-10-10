@@ -1,0 +1,73 @@
+SUIVI DU SOMMEIL v2 - app iPhone « Sommeil »
+============================================
+
+Ces fichiers s'ajoutent à ton dossier SuiviSommeil (la v1 continue de marcher) :
+
+  5_RECEVOIR_IPHONE.bat   -> reçoit les séances envoyées par l'app Sommeil
+  recevoir_iphone.py      -> (utilisé par le .bat)
+  lecture_iphone.py       -> lit les fichiers de l'app
+  verifier_seance.py      -> vérifie une séance (fréquence, battements, respiration...)
+
+Les séances arrivent dans le dossier « iphone_v2 », une séance par sous-dossier.
+Pour l'instant (phase 1), elles ne sont pas encore dans le rapport de 3_VOIR_MA_NUIT.bat :
+on vérifie d'abord que le signal est bon. Le rapport complet viendra en phase 2.
+
+
+-------------------------------------------------------------
+UNE FOIS : RELIER L'APP AU PC
+-------------------------------------------------------------
+1. Double-clique sur 5_RECEVOIR_IPHONE.bat. Il affiche une adresse, par exemple :
+           192.168.1.23:8010
+   La première fois, Windows demande d'autoriser Python sur le réseau :
+   coche « Réseaux privés ».
+2. Sur l'iPhone : app Sommeil > roue dentée (Réglages) > Adresse du PC :
+   écris cette adresse, puis « Tester la connexion ». L'iPhone demande l'accès
+   au réseau local : réponds « Autoriser ».
+3. Ensuite, chaque fois que tu arrêtes un enregistrement, l'app l'envoie au PC
+   toute seule, si 5_RECEVOIR_IPHONE.bat est ouvert. Sinon : dans l'app, ouvre
+   la séance > « Envoyer au PC ». Un envoi coupé reprend où il s'était arrêté.
+   Garde l'app ouverte pendant l'envoi.
+
+Sans Wi-Fi ? Dans l'app, ouvre la séance > « Partager » > « Enregistrer dans
+Fichiers », puis récupère le .zip sur le PC (câble, iCloud...). Dézippe-le dans
+le dossier iphone_v2, puis glisse le dossier de la séance sur 5_RECEVOIR_IPHONE.bat
+pour le vérifier.
+
+
+-------------------------------------------------------------
+LES TESTS DE LA PHASE 1
+-------------------------------------------------------------
+A. Test de placement (sans rien enregistrer)
+   App Sommeil > « Test de placement ». Attache le téléphone, allonge-toi sur le
+   dos, ne bouge plus. Essaie plusieurs endroits (bas du sternum, milieu, sur le
+   cœur) et plusieurs serrages ; pour chacun, attends 15 secondes et touche
+   « Noter cet emplacement ». Garde le meilleur.
+
+B. Test guidé de 10 minutes
+   App Sommeil > « Test guidé de 10 minutes ». Monte le volume : une voix te
+   guide (sur le dos, deux arrêts de respiration de 20 secondes, quelques
+   mouvements, côté gauche, côté droit). Si retenir ta respiration est
+   désagréable, respire. À la fin, la séance part vers le PC et la
+   vérification s'affiche dans la fenêtre noire.
+
+C. Test d'une heure, écran verrouillé
+   « Commencer la nuit », puis verrouille l'écran et vis normalement (ou
+   allonge-toi) pendant une heure, téléphone débranché. Puis « Arrêter ».
+   On vérifie que tout a été enregistré et combien de batterie a été utilisée.
+
+Après chaque test, envoie à Claude le fichier verification.txt de la séance
+(dans iphone_v2\<séance>\), ou le dossier de la séance zippé.
+
+
+-------------------------------------------------------------
+IMPORTANT
+-------------------------------------------------------------
+- Ne charge JAMAIS le téléphone quand il est attaché sur toi sous la couette :
+  il chauffe. Charge-le avant de te coucher.
+- L'installation de l'app par Sideloadly dure 7 jours. L'app affiche la date
+  d'expiration et prévient avant une nuit si elle approche. Pour renouveler :
+  rebranche l'iPhone au PC et refais « Start » dans Sideloadly avec le même
+  fichier. Normalement tes séances restent sur l'iPhone ; par prudence,
+  envoie-les au PC avant.
+- Ce n'est pas un appareil médical. Si des pauses respiratoires reviennent
+  souvent, ou si tu es très fatigué la journée, parles-en à un médecin.

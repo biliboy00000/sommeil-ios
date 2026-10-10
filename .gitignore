@@ -8,4 +8,5 @@ Payload/
 __pycache__/
 *.pyc
 .venv/
+.venv-tests/
 Packages/SleepCore/.swiftpm/

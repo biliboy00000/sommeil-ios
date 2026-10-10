@@ -156,16 +156,17 @@ final class Uploader: ObservableObject {
     }
 
     static func files(in directory: URL) -> [LocalFile] {
-        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
-                                                              options: [.skipsHiddenFiles]) else { return [] }
-        let basePath = directory.standardizedFileURL.path
+        // Chemins relatifs fournis directement par le système (pas de souci de /private/var…).
+        let manager = FileManager.default
+        guard let paths = manager.subpaths(atPath: directory.path) else { return [] }
         var result: [LocalFile] = []
-        for case let url as URL in enumerator {
-            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            var relative = url.standardizedFileURL.path
-            if relative.hasPrefix(basePath) { relative.removeFirst(basePath.count) }
-            while relative.hasPrefix("/") { relative.removeFirst() }
+        for relative in paths {
+            let components = relative.split(separator: "/")
+            guard !components.contains(where: { $0.hasPrefix(".") }) else { continue }
+            let url = directory.appendingPathComponent(relative)
+            var isDirectory: ObjCBool = false
+            guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else { continue }
+            let size = (try? manager.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
             result.append(LocalFile(url: url, relativePath: relative, size: size))
         }
         let isText: (LocalFile) -> Bool = { $0.relativePath.hasSuffix(".json") || $0.relativePath.hasSuffix(".jsonl") }
