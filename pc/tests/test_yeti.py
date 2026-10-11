@@ -170,8 +170,13 @@ class TestsCommandesHTTP(unittest.TestCase):
         statut, etat = self.requete("POST", "/v2/yeti/demarrer", {"seance": "2026-10-11_23h00m00"})
         self.assertEqual(statut, 200)
         self.assertTrue(etat["enregistre"])
-        time.sleep(0.5)
-        statut, etat = self.requete("GET", "/v2/yeti/etat")
+        # Attendre que du son soit écrit (la machine de compilation peut être lente).
+        limite = time.time() + 10
+        while True:
+            time.sleep(0.25)
+            statut, etat = self.requete("GET", "/v2/yeti/etat")
+            if etat.get("secondes", 0) > 1 or time.time() > limite:
+                break
         self.assertTrue(etat["enregistre"])
         self.assertGreater(etat["secondes"], 1)
         self.assertIsNotNone(etat["niveau_db"])
