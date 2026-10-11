@@ -16,11 +16,25 @@ struct SettingsView: View {
                     .keyboardType(.numbersAndPunctuation)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SecureField("Code du PC (6 chiffres)", text: $settings.pcCode)
+                    .keyboardType(.numberPad)
+                Toggle("Lancer le Blue Yeti avec chaque enregistrement", isOn: $settings.controlYeti)
                 Button {
                     testing = true
                     testResult = nil
                     Task {
-                        let result = await uploader.ping(address: settings.pcAddress)
+                        var result = await uploader.ping(address: settings.pcAddress)
+                        if settings.controlYeti {
+                            let yeti = await PCLink.status(address: settings.pcAddress, code: settings.pcCode)
+                            switch yeti {
+                            case .state(let state):
+                                result += state.enregistre == true
+                                    ? " Le Blue Yeti enregistre déjà."
+                                    : " Code accepté : le Blue Yeti démarrera avec la prochaine nuit."
+                            case .failure(let message):
+                                result += " Blue Yeti : \(message)."
+                            }
+                        }
                         await MainActor.run {
                             testResult = result
                             testing = false
@@ -35,9 +49,10 @@ struct SettingsView: View {
             } header: {
                 Text("Adresse du PC")
             } footer: {
-                Text("Double-clique sur 5_RECEVOIR_IPHONE.bat sur le PC : il affiche l'adresse à recopier ici. "
-                     + "Le PC et l'iPhone doivent être sur le même Wi-Fi. La première fois, l'iPhone demande "
-                     + "l'accès au réseau local : réponds « Autoriser ».")
+                Text("Double-clique sur 5_RECEVOIR_IPHONE.bat sur le PC : il affiche l'adresse et le code à "
+                     + "recopier ici. Le PC et l'iPhone doivent être sur le même Wi-Fi. La première fois, l'iPhone "
+                     + "demande l'accès au réseau local : réponds « Autoriser ». Avec le code, « Commencer la nuit » "
+                     + "lance aussi le Blue Yeti du PC, et « Arrêter » l'arrête.")
             }
 
             Section {

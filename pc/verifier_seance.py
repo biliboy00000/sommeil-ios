@@ -550,6 +550,28 @@ def verifier(dossier):
         except ImportError:
             r("(PyAV absent : lecture du son non vérifiée)")
 
+    # ---------------------------------------------------------------- Blue Yeti
+    yeti = s.segments_yeti()
+    if yeti:
+        r.titre("6 bis. Blue Yeti (PC)")
+        complets = [x for x in yeti if x.get("complete")]
+        duree = sum(x["frames"] / x["sampleRate"] for x in complets)
+        decalage = s.decalage_pc()
+        r("%d fichier(s), %d complet(s), %s de son" % (len(yeti), len(complets), temps_txt(duree)))
+        if decalage is not None:
+            r("Écart d'horloge PC − iPhone : %+.2f s (corrigé pour caler les deux enregistrements)" % decalage)
+            debut = yeti[0]["startUnix"] - decalage - s.info["startUnix"]
+            r("Le Yeti a commencé %s après le début de la séance iPhone" % temps_txt(max(0, debut)))
+        if complets and len(complets) < len(yeti):
+            r("Dernier fichier non terminé (PC éteint ou fenêtre fermée brutalement ?)")
+        r.resultats["yeti"] = {"fichiers": len(yeti), "secondes": duree, "decalage_pc_s": decalage}
+        try:
+            x = s.lire_yeti(complets[len(complets) // 2]) if complets else []
+            if len(x):
+                r("Niveau moyen (fichier du milieu) : %.0f dBFS" % (20 * np.log10(np.sqrt(np.mean(np.square(x, dtype=np.float64))) + 1e-9)))
+        except ImportError:
+            r("(soundfile absent : lecture du Yeti non vérifiée)")
+
     # ---------------------------------------------------------------- batterie et journal
     r.titre("7. Batterie, interruptions, erreurs")
     if s.resume and s.resume.get("batteryDrainPerHour") is not None:

@@ -17,16 +17,26 @@ final class AppSettings: ObservableObject {
     @Published var autoUpload: Bool { didSet { defaults.set(autoUpload, forKey: "autoUpload") } }
     /// Heure du réveil, en minutes depuis minuit.
     @Published var wakeMinutes: Int { didSet { defaults.set(wakeMinutes, forKey: "wakeMinutes") } }
+    /// Code affiché par le récepteur du PC (protège la commande du micro).
+    @Published var pcCode: String { didSet { defaults.set(pcCode, forKey: "pcCode") } }
+    /// Démarrer et arrêter le Blue Yeti du PC avec chaque enregistrement.
+    @Published var controlYeti: Bool { didSet { defaults.set(controlYeti, forKey: "controlYeti") } }
 
     init() {
         defaults.register(defaults: ["pcAddress": "", "rawSensors": true, "voicePrompts": true,
-                                     "autoUpload": true, "wakeMinutes": 7 * 60 + 30])
+                                     "autoUpload": true, "wakeMinutes": 7 * 60 + 30, "pcCode": "",
+                                     "controlYeti": true])
         pcAddress = defaults.string(forKey: "pcAddress") ?? ""
         rawSensors = defaults.bool(forKey: "rawSensors")
         voicePrompts = defaults.bool(forKey: "voicePrompts")
         autoUpload = defaults.bool(forKey: "autoUpload")
         wakeMinutes = defaults.integer(forKey: "wakeMinutes")
+        pcCode = defaults.string(forKey: "pcCode") ?? ""
+        controlYeti = defaults.bool(forKey: "controlYeti")
     }
+
+    /// Le Blue Yeti doit-il être commandé ? (option activée et adresse du PC connue)
+    var wantsYeti: Bool { controlYeti && !pcAddress.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var wakeDate: Date {
         get {

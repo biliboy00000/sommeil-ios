@@ -194,6 +194,10 @@ struct HomeView: View {
         if let free = DeviceInfo.freeDiskMB, free < 2000 {
             warnings.append("Il reste moins de 2 Go de stockage. Une nuit peut prendre jusqu'à 1 Go.")
         }
+        if settings.wantsYeti && settings.pcCode.trimmingCharacters(in: .whitespaces).isEmpty {
+            warnings.append("Le code du PC n'est pas renseigné : le Blue Yeti ne démarrera pas. Recopie-le dans "
+                            + "Réglages (il s'affiche dans la fenêtre de 5_RECEVOIR_IPHONE.bat).")
+        }
         if ProcessInfo.processInfo.isLowPowerModeEnabled {
             warnings.append("Le mode économie d'énergie est activé : il peut perturber l'enregistrement.")
         }

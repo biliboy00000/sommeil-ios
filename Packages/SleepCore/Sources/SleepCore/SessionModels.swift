@@ -49,6 +49,8 @@ public enum EventType {
     public static let battery = "batterie"
     public static let stats = "stats_capteurs"
     public static let previousSessionLost = "seance_precedente_interrompue"
+    /// Commande et état du Blue Yeti branché au PC.
+    public static let yeti = "yeti_pc"
 }
 
 /// Correspondance entre l'horloge des capteurs et l'heure réelle (horloge.jsonl).

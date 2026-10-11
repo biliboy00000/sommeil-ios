@@ -10,8 +10,13 @@ Les séances arrivent dans le dossier « iphone_v2 », une séance par sous-doss
 Un envoi coupé reprend où il s'était arrêté. Chaque séance reçue est vérifiée
 (verification.txt dans son dossier).
 
-Ce programme n'utilise que Python lui-même ; la vérification utilise numpy et scipy
-(installés par 1_INSTALLER.bat).
+Il peut aussi enregistrer le Blue Yeti : l'app le démarre quand tu touches
+« Commencer la nuit » et l'arrête avec « Arrêter » (voir yeti.py). Ces commandes
+demandent le code affiché au lancement, à recopier une fois dans l'app.
+Tant que la fenêtre est ouverte, le PC ne se met pas en veille.
+
+La réception n'utilise que Python lui-même ; la vérification et le Yeti utilisent
+numpy, scipy, sounddevice, soundfile et soxr (installés par 1_INSTALLER.bat).
 """
 import os
 import re
@@ -20,12 +25,15 @@ import json
 import time
 import queue
 import socket
+import hmac
+import secrets
 import datetime
 import threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 DOSSIER = os.path.dirname(os.path.abspath(__file__))
 DOSSIER_V2 = os.path.join(DOSSIER, "iphone_v2")
+FICHIER_CODE = os.path.join(DOSSIER, "code_app.txt")
 PORTS = (8010, 8011, 8012)
 ID_VALIDE = re.compile(r"^[A-Za-z0-9_\-]{3,80}$")
 MORCEAU_VALIDE = re.compile(r"^[A-Za-z0-9_\-][A-Za-z0-9_.\-]{0,80}$")
@@ -76,6 +84,59 @@ def fichiers_recus(id_seance):
     return res
 
 
+def lire_ou_creer_code():
+    """Code à 6 chiffres, créé une fois, qui protège la commande du micro."""
+    try:
+        with open(FICHIER_CODE, encoding="utf-8") as f:
+            code = f.read().strip()
+        if re.fullmatch(r"\d{6}", code):
+            return code
+    except OSError:
+        pass
+    code = "%06d" % secrets.randbelow(10 ** 6)
+    with open(FICHIER_CODE, "w", encoding="utf-8") as f:
+        f.write(code)
+    return code
+
+
+def empecher_veille(actif):
+    """Windows : empêche la mise en veille du PC (l'écran peut s'éteindre)."""
+    if os.name != "nt":
+        return
+    import ctypes
+    ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+    ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if actif else 0))
+
+
+def surveiller_fermeture(enregistreur):
+    """Windows : si on ferme la fenêtre avec la croix, on termine proprement le fichier du Yeti."""
+    if os.name != "nt" or enregistreur is None:
+        return None
+    import ctypes
+    from ctypes import wintypes
+    TYPE = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+
+    def gestion(evenement):
+        try:
+            enregistreur.arreter(raison="fenêtre fermée")
+        finally:
+            return False      # laisse Windows fermer la fenêtre ensuite
+
+    rappel = TYPE(gestion)
+    ctypes.windll.kernel32.SetConsoleCtrlHandler(rappel, True)
+    return rappel  # à garder en mémoire
+
+
+def recepteur_deja_ouvert():
+    """Un récepteur tourne-t-il déjà sur ce PC (par exemple lancé au démarrage de Windows) ?"""
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:%d/v2/ping" % PORTS[0], timeout=1.5) as r:
+            return json.loads(r.read().decode("utf-8")).get("version") == 2
+    except Exception:
+        return False
+
+
 def ecrire_json(chemin, donnees):
     tmp = chemin + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -92,7 +153,7 @@ color:#1f2733;line-height:1.5}code{background:#eef1f5;padding:2px 6px;border-rad
 puis « Tester la connexion ».</p></body></html>"""
 
 
-def creer_serveur(file_recues, infos):
+def creer_serveur(file_recues, infos, yeti=None, code=None):
     class Recepteur(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -106,6 +167,41 @@ def creer_serveur(file_recues, infos):
             self.send_header("Content-Length", str(len(corps)))
             self.end_headers()
             self.wfile.write(corps)
+
+        def _code_ok(self):
+            donne = self.headers.get("X-Code-PC", "")
+            return bool(code) and hmac.compare_digest(donne.encode(), code.encode())
+
+        def _lire_json(self):
+            taille = int(self.headers.get("Content-Length", "0") or 0)
+            if taille <= 0:
+                return {}
+            try:
+                return json.loads(self.rfile.read(min(taille, 1 << 16)).decode("utf-8")) or {}
+            except ValueError:
+                return {}
+
+        def _yeti(self, m, methode):
+            """Commandes du Yeti : /v2/yeti/etat (GET), /v2/yeti/demarrer et /v2/yeti/arreter (POST)."""
+            corps = self._lire_json() if methode == "POST" else {}
+            if yeti is None:
+                return self._json(503, {"ok": False, "message": "enregistrement du Yeti indisponible sur ce PC "
+                                                                 "(lance 1_INSTALLER.bat)"})
+            if not self._code_ok():
+                return self._json(403, {"ok": False, "message": "code du PC incorrect"})
+            heure_iphone = self.headers.get("X-Unix")
+            if methode == "GET" and m[2] == "etat":
+                return self._json(200, dict(ok=True, **yeti.etat(heure_iphone)))
+            seance = str(corps.get("seance", ""))
+            if methode == "POST" and m[2] == "demarrer":
+                if not ID_VALIDE.match(seance):
+                    return self._json(400, {"ok": False, "message": "séance invalide"})
+                etat = yeti.demarrer(os.path.join(DOSSIER_V2, seance), seance, heure_iphone)
+                return self._json(200 if etat["enregistre"] else 500, dict(ok=etat["enregistre"], **etat))
+            if methode == "POST" and m[2] == "arreter":
+                etat = yeti.arreter(seance if ID_VALIDE.match(seance) else None)
+                return self._json(200, dict(ok=True, **etat))
+            return self._json(404, {"ok": False, "message": "adresse inconnue"})
 
         def _morceaux(self):
             chemin = self.path.split("?", 1)[0]
@@ -122,7 +218,10 @@ def creer_serveur(file_recues, infos):
                 self.end_headers()
                 self.wfile.write(corps)
             elif m == ["v2", "ping"]:
-                self._json(200, {"ok": True, "machine": socket.gethostname(), "version": 2})
+                self._json(200, {"ok": True, "machine": socket.gethostname(), "version": 2,
+                                 "yeti": yeti is not None})
+            elif len(m) == 3 and m[:2] == ["v2", "yeti"]:
+                self._yeti(m, "GET")
             elif len(m) == 3 and m[:2] == ["v2", "seance"] and ID_VALIDE.match(m[2]):
                 self._json(200, {"ok": True, "fichiers": fichiers_recus(m[2])})
             else:
@@ -160,6 +259,8 @@ def creer_serveur(file_recues, infos):
 
         def do_POST(self):
             m = self._morceaux()
+            if len(m) == 3 and m[:2] == ["v2", "yeti"]:
+                return self._yeti(m, "POST")
             if len(m) != 4 or m[:2] != ["v2", "seance"] or m[3] != "fin" or not ID_VALIDE.match(m[2]):
                 return self._json(404, {"ok": False, "message": "adresse inconnue"})
             taille = int(self.headers.get("Content-Length", "0") or 0)
@@ -177,6 +278,8 @@ def creer_serveur(file_recues, infos):
             ecrire_json(os.path.join(dossier, "recu.json"),
                         {"recu_le": datetime.datetime.now().isoformat(timespec="seconds"),
                          "fichiers": len(attendu), "octets": sum(attendu.values())})
+            if yeti is not None:
+                yeti.arreter(m[2], raison="séance reçue")
             self._json(200, {"ok": True, "message": "Reçu en entier sur %s." % socket.gethostname()})
             file_recues.put(dossier)
 
@@ -255,11 +358,24 @@ def main():
     if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):     # vérifier un dossier déjà reçu
         presenter(os.path.abspath(sys.argv[1]))
         return
+    if recepteur_deja_ouvert():
+        print("\n  Le récepteur est déjà ouvert (sans doute réduit dans la barre des tâches).")
+        print("  Inutile d'en ouvrir un second : tout fonctionne déjà.")
+        return
     os.makedirs(DOSSIER_V2, exist_ok=True)
     file_recues = queue.Queue()
     ip = ip_locale()
     infos = {}
-    serveur, port = creer_serveur(file_recues, infos)
+    code = lire_ou_creer_code()
+    try:
+        import yeti as module_yeti
+        import sounddevice  # noqa: F401
+        import soundfile  # noqa: F401
+        enregistreur = module_yeti.EnregistreurYeti(journal=afficher)
+    except Exception as e:
+        enregistreur = None
+        print("\n  (Blue Yeti indisponible : %s. Lance 1_INSTALLER.bat pour l'activer.)" % e)
+    serveur, port = creer_serveur(file_recues, infos, enregistreur, code)
     if serveur is None:
         print("\n  Impossible d'ouvrir la réception (ports %s occupés). Ferme les autres fenêtres"
               % ", ".join(map(str, PORTS)))
@@ -273,6 +389,12 @@ def main():
     print("  L'iPhone doit être sur le même Wi-Fi que ce PC. La première fois, Windows demande")
     print("  d'autoriser Python sur le réseau : coche « Réseaux privés ».")
     print("  Les séances arrivent dans le dossier « iphone_v2 ».")
+    if enregistreur is not None:
+        print("\n  Code du PC à recopier une fois dans l'app (Réglages › Code du PC) :  %s" % code)
+        print("  Avec ce code, « Commencer la nuit » lance aussi le Blue Yeti, « Arrêter » l'arrête.")
+    empecher_veille(True)
+    print("  Tant que cette fenêtre est ouverte, le PC ne se met pas en veille (l'écran peut s'éteindre).")
+    garde = surveiller_fermeture(enregistreur)
     print("\n  En attente... (laisse cette fenêtre ouverte ; Entrée pour quitter)")
     arret = threading.Event()
 
@@ -291,6 +413,9 @@ def main():
             continue
         presenter(dossier)
         afficher("\n  En attente d'une autre séance... (Entrée pour quitter)")
+    if enregistreur is not None:
+        enregistreur.arreter(raison="fenêtre fermée")
+    empecher_veille(False)
     serveur.shutdown()
 
 

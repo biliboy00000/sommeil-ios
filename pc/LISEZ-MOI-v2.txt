@@ -4,7 +4,10 @@ SUIVI DU SOMMEIL v2 - app iPhone « Sommeil »
 Ces fichiers s'ajoutent à ton dossier SuiviSommeil (la v1 continue de marcher) :
 
   5_RECEVOIR_IPHONE.bat   -> reçoit les séances envoyées par l'app Sommeil
-  recevoir_iphone.py      -> (utilisé par le .bat)
+                             (et enregistre le Blue Yeti quand l'app le demande)
+  6_DEMARRAGE_AUTOMATIQUE.bat -> ouvre le récepteur tout seul au démarrage
+                             de Windows (double-clic pour activer / désactiver)
+  recevoir_iphone.py, yeti.py -> (utilisés par les .bat)
   lecture_iphone.py       -> lit les fichiers de l'app
   verifier_seance.py      -> vérifie une séance (fréquence, battements, respiration...)
 
@@ -32,6 +35,42 @@ Sans Wi-Fi ? Dans l'app, ouvre la séance > « Partager » > « Enregistrer dans
 Fichiers », puis récupère le .zip sur le PC (câble, iCloud...). Dézippe-le dans
 le dossier iphone_v2, puis glisse le dossier de la séance sur 5_RECEVOIR_IPHONE.bat
 pour le vérifier.
+
+
+-------------------------------------------------------------
+LE BLUE YETI LANCÉ PAR L'APP (facultatif)
+-------------------------------------------------------------
+Le récepteur peut enregistrer le Blue Yeti tout seul : « Commencer la nuit »
+dans l'app le démarre, « Arrêter » l'arrête. Le son du Yeti est rangé dans le
+dossier de la même séance (iphone_v2\<séance>\yeti), avec l'écart d'horloge
+entre le PC et l'iPhone pour caler les deux enregistrements.
+
+Une fois :
+1. Lance 1_INSTALLER.bat si ce n'est pas déjà fait.
+2. Double-clique sur 5_RECEVOIR_IPHONE.bat. Il affiche, sous l'adresse, un
+   « Code du PC » à 6 chiffres.
+3. Dans l'app : Réglages > Code du PC : recopie ce code. Laisse activé
+   « Lancer le Blue Yeti avec chaque enregistrement », puis « Tester la
+   connexion » : il doit dire « Code accepté ».
+   Ce code protège le micro : sans lui, personne sur ton Wi-Fi ne peut
+   lancer un enregistrement.
+
+Chaque soir : la fenêtre du récepteur doit être ouverte (ou réduite).
+Pendant la nuit, l'app affiche « Blue Yeti (PC) : enregistre · 2 h 10 · -60 dB ».
+Si le PC ne répond pas, l'iPhone enregistre quand même, seul.
+Sécurité : le Yeti s'arrête tout seul quand la séance arrive sur le PC,
+ou au plus tard après 14 heures.
+
+Tout automatique : double-clique sur 6_DEMARRAGE_AUTOMATIQUE.bat. Le
+récepteur s'ouvrira alors tout seul (réduit) à chaque ouverture de session
+Windows. Double-clique à nouveau pour désactiver.
+Attention : tant que le récepteur est ouvert, le PC ne se met pas en veille
+(l'écran, lui, peut s'éteindre). Si le PC change d'adresse sur le Wi-Fi,
+recopie la nouvelle adresse dans l'app.
+
+Réglages du Yeti : mode cardioïde (symbole en cœur), face avant vers ta tête,
+à moins d'1 mètre, gain aux 3/4. Si quelqu'un dort avec toi, préviens-le :
+il sera enregistré aussi.
 
 
 -------------------------------------------------------------

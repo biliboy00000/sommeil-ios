@@ -185,3 +185,25 @@ class Seance:
                     x = x.astype(np.float32) / float(np.iinfo(x.dtype).max)
                 morceaux.append(x.reshape(-1).astype(np.float32))
         return np.concatenate(morceaux) if morceaux else np.zeros(0, dtype=np.float32)
+
+    # ------------------------------------------------------------ Blue Yeti (PC)
+    def segments_yeti(self):
+        """Fichiers du Blue Yeti enregistrés par le PC pendant la séance (dernière ligne par fichier)."""
+        derniers = {}
+        for ligne in lire_jsonl(os.path.join(self.dossier, "yeti", "index.jsonl")):
+            derniers[ligne["file"]] = ligne
+        return sorted(derniers.values(), key=lambda s: s["startUnix"])
+
+    def decalage_pc(self):
+        """Écart médian horloge du PC − horloge de l'iPhone (secondes), ou None.
+        L'heure du Yeti (startUnix, horloge du PC) − ce décalage = heure de l'iPhone."""
+        points = [l["pc_moins_iphone_s"] for l in lire_jsonl(os.path.join(self.dossier, "yeti", "horloge.jsonl"))
+                  if "pc_moins_iphone_s" in l]
+        return float(np.median(points)) if points else None
+
+    def lire_yeti(self, segment):
+        """Échantillons (16 kHz mono) d'un fichier du Yeti. Nécessite soundfile."""
+        import soundfile
+        x, _ = soundfile.read(os.path.join(self.dossier, segment["file"]), dtype="float32")
+        return x
+

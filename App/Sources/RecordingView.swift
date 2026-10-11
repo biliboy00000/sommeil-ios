@@ -99,6 +99,9 @@ struct RecordingView: View {
                     ? "\(TimeText.duration(live.audioSeconds)) · \(Int(live.level)) dB"
                     : "arrêté — relance en cours",
                     valueColor: live.audioRunning ? .primary : .red)
+            if let yeti = live.yetiText {
+                InfoRow(label: "Blue Yeti (PC)", value: yeti, valueColor: live.yetiOK ? .primary : .orange)
+            }
             InfoRow(label: "Interruptions", value: "\(live.interruptions)")
             if let battery = live.battery {
                 InfoRow(label: "Batterie", value: battery.percentText, valueColor: battery < 0.15 ? .red : .primary)

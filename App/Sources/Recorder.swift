@@ -32,6 +32,9 @@ final class Recorder: ObservableObject {
         var guidedNext: String?
         var interruptions = 0
         var lastMessage: String?
+        /// État du Blue Yeti du PC (nil si non utilisé).
+        var yetiText: String?
+        var yetiOK = true
     }
 
     static let calibrationSeconds = 30.0
@@ -72,6 +75,9 @@ final class Recorder: ObservableObject {
     private var lastThermal = ""
     private var lowBatteryLogged = false
     private var stopping = false
+    private var yetiRequested = false
+    private var lastYetiPoll = 0.0
+    private var lastYetiSummary = ""
 
     // Utilisés sur la file des capteurs.
     private var calibrationActive = false
@@ -247,7 +253,56 @@ final class Recorder: ObservableObject {
         timer.resume()
         tickTimer = timer
         tick()
+        if settings.wantsYeti {
+            startYeti(sessionID: id)
+        }
         return nil
+    }
+
+    // MARK: - Blue Yeti du PC
+
+    private func startYeti(sessionID: String) {
+        yetiRequested = true
+        lastYetiPoll = live.elapsed
+        lastYetiSummary = ""
+        live.yetiText = "démarrage…"
+        let address = settings.pcAddress, code = settings.pcCode
+        Task { [weak self] in
+            let outcome = await PCLink.start(sessionID: sessionID, address: address, code: code)
+            await MainActor.run { self?.applyYeti(outcome) }
+        }
+    }
+
+    private func pollYeti() {
+        guard let sessionID = info?.id else { return }
+        lastYetiPoll = live.elapsed
+        let address = settings.pcAddress, code = settings.pcCode
+        Task { [weak self] in
+            var outcome = await PCLink.status(address: address, code: code)
+            // Le PC répond mais n'enregistre pas (récepteur relancé ?) : on redemande.
+            if case .state(let state) = outcome, state.enregistre != true {
+                outcome = await PCLink.start(sessionID: sessionID, address: address, code: code)
+            }
+            await MainActor.run { self?.applyYeti(outcome) }
+        }
+    }
+
+    private func applyYeti(_ outcome: PCLink.Outcome) {
+        guard isRecording else { return }
+        let description = PCLink.describe(outcome)
+        live.yetiText = description.text
+        live.yetiOK = description.ok
+        // On ne note dans le journal que les changements (pas chaque contrôle).
+        let summary: String
+        switch outcome {
+        case .failure(let message): summary = "échec:" + message
+        case .state(let state): summary = (state.enregistre == true ? "ok:" : "arrêt:") + (state.micro ?? "") + (state.erreur ?? "")
+        }
+        guard summary != lastYetiSummary else { return }
+        lastYetiSummary = summary
+        var values: [String: Double]?
+        if case .state(let state) = outcome, let seconds = state.secondes { values = ["secondes": seconds] }
+        log(EventType.yeti, "Blue Yeti du PC : \(description.text)", values: values)
     }
 
     // MARK: - Pendant l'enregistrement
@@ -316,6 +371,10 @@ final class Recorder: ObservableObject {
         if elapsed - lastStateSample >= 15 {
             lastStateSample = elapsed
             writeState(now: now)
+        }
+        // Contrôle du Blue Yeti toutes les 5 minutes.
+        if yetiRequested && elapsed - lastYetiPoll >= 300 {
+            pollYeti()
         }
     }
 
@@ -425,6 +484,12 @@ final class Recorder: ObservableObject {
         let now = Clock.now
         writeState(now: now)
         clockLog?.write(ClockPoint(uptime: now.uptime, unix: now.unix, continuous: Clock.continuous))
+        if yetiRequested, let sessionID = info?.id {
+            yetiRequested = false
+            log(EventType.yeti, "Blue Yeti du PC : demande d'arrêt envoyée")
+            let address = settings.pcAddress, code = settings.pcCode
+            Task { _ = await PCLink.stop(sessionID: sessionID, address: address, code: code) }
+        }
         log(EventType.sessionEnd, "Fin de l'enregistrement (bouton Arrêter ou fin du test)")
         info?.endUnix = now.unix
         info?.endUptime = now.uptime
