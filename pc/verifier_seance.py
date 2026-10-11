@@ -495,6 +495,12 @@ def verifier(dossier):
         duree_bloc = 600 if t_rel[-1] > 3600 else 60
         r.titre("Tenue du téléphone (battements nets au fil de la séance, blocs de %d min)" % (duree_bloc // 60))
         calib = (info.get("calibration") or {}).get("gravity")
+        if calib:
+            inclinaison = float(np.degrees(np.arccos(min(1.0, abs(calib[2]) / max(np.linalg.norm(calib), 1e-9)))))
+            if inclinaison > 35:
+                r("Calibration faite avec le téléphone incliné de %.0f° : tu n'étais sans doute pas sur le dos." % inclinaison)
+                r("Les positions ci-dessous sont déduites de l'orientation du téléphone (à plat = sur le dos).")
+                calib = [0.0, 0.0, float(np.sign(calib[2]) or -1.0)]
         blocs = tenue_telephone(t_rel, col, calib, duree_bloc)
         r.resultats["tenue"] = blocs
         r("%-9s %-8s %7s %9s %12s" % ("heure", "position", "calme", "qualité", "battements nets"))

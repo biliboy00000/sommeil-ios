@@ -27,6 +27,7 @@ final class Recorder: ObservableObject {
         var battery: Double?
         var calibrationRemaining: Double?
         var calibrationMovement: Double?
+        var calibrationTilt: Double?
         var guidedDisplay: String?
         var guidedNext: String?
         var interruptions = 0
@@ -61,6 +62,7 @@ final class Recorder: ObservableObject {
     private var stateLog: JSONLinesWriter?
     private var info: SessionInfo?
     private var startUptime = 0.0
+    private var calibrationStartUptime = 0.0
     private var tickTimer: DispatchSourceTimer?
     private var lastClockPoint = -100.0
     private var lastStateSample = -100.0
@@ -163,6 +165,7 @@ final class Recorder: ObservableObject {
         self.kind = kind
         sessionDirectory = directory
         startUptime = now.uptime
+        calibrationStartUptime = now.uptime
         stopping = false
         log(EventType.sessionStart, "Début : \(kind.label)", values: ["batterie": DeviceInfo.batteryLevel() ?? -1],
             info: ["appareil": session.device, "ios": session.systemVersion, "app": session.appVersion,
@@ -257,7 +260,7 @@ final class Recorder: ObservableObject {
 
         // Calibration.
         if live.calibrationRemaining != nil {
-            let remaining = Self.calibrationSeconds - elapsed
+            let remaining = Self.calibrationSeconds - (now.uptime - calibrationStartUptime)
             if remaining <= 0 { finishCalibration(info: info, now: now) } else { live.calibrationRemaining = remaining }
         }
 
@@ -320,7 +323,7 @@ final class Recorder: ObservableObject {
         var result: Calibration?
         sensorQueue.sync {
             calibrationActive = false
-            result = calibration.result(startUnix: info.startUnix, endUnix: now.unix)
+            result = calibration.result(startUnix: Clock.unix(fromUptime: calibrationStartUptime), endUnix: now.unix)
         }
         live.calibrationRemaining = nil
         live.calibrationMovement = result?.movement
@@ -330,13 +333,45 @@ final class Recorder: ObservableObject {
         }
         self.info?.calibration = result
         writeInfo()
-        let still = result.movement < 0.02
-        log(EventType.calibrationEnd, still ? "Calibration terminée" : "Calibration terminée, mais tu as bougé",
-            values: ["gx": result.gravity[0], "gy": result.gravity[1], "gz": result.gravity[2],
-                     "agitation_g": result.movement, "mesures": Double(result.samples)])
-        if kind == .night {
-            speaker.say("Calibration terminée. Bonne nuit.")
+        live.calibrationTilt = result.tiltDegrees
+        let still = result.movement < Calibration.maxStillMovement
+        let flat = result.tiltDegrees <= Calibration.maxPlausibleTilt
+        let message: String
+        if still && flat {
+            message = "Calibration terminée"
+        } else if !flat {
+            message = "Calibration terminée, mais le téléphone est incliné de \(Int(result.tiltDegrees.rounded()))° : "
+                + "es-tu bien sur le dos ?"
+        } else {
+            message = "Calibration terminée, mais tu as bougé"
         }
+        log(EventType.calibrationEnd, message,
+            values: ["gx": result.gravity[0], "gy": result.gravity[1], "gz": result.gravity[2],
+                     "agitation_g": result.movement, "inclinaison_deg": result.tiltDegrees,
+                     "mesures": Double(result.samples)])
+        if kind == .night {
+            if result.isPlausible {
+                speaker.say("Calibration terminée. Bonne nuit.")
+            } else {
+                speaker.say(flat ? "Tu as bougé pendant la calibration. Si tu veux, recommence-la, sur le dos, sans bouger."
+                                 : "Le téléphone semble incliné. Si tu n'étais pas sur le dos, recommence la calibration.")
+            }
+        }
+    }
+
+    /// Relance les 30 secondes de calibration (sur le dos, sans bouger) pendant un enregistrement.
+    func recalibrate() {
+        guard isRecording, live.calibrationRemaining == nil else { return }
+        sensorQueue.sync {
+            calibration = CalibrationAccumulator()
+            calibrationActive = true
+        }
+        calibrationStartUptime = Clock.uptime
+        live.calibrationRemaining = Self.calibrationSeconds
+        live.calibrationMovement = nil
+        live.calibrationTilt = nil
+        log(EventType.calibrationStart, "Nouvelle calibration demandée (sur le dos, 30 s)")
+        speaker.say("Allonge-toi sur le dos, et ne bouge plus pendant trente secondes.")
     }
 
     private func writeState(now: (uptime: Double, unix: Double)) {

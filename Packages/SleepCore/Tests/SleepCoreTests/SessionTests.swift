@@ -45,6 +45,18 @@ final class SessionTests: XCTestCase {
         XCTAssertLessThan(result!.movement, 1e-6)
     }
 
+    func testCalibrationTilt() {
+        // Première vraie nuit : calibration faite couché sur le côté (téléphone incliné d'environ 57°).
+        let side = Calibration(startUnix: 0, endUnix: 30, gravity: [0.819, 0.194, -0.540], movement: 0.036, samples: 2996)
+        XCTAssertEqual(side.tiltDegrees, 57.3, accuracy: 0.5)
+        XCTAssertFalse(side.isPlausible)
+        let back = Calibration(startUnix: 0, endUnix: 30, gravity: [0.03, -0.05, -1.0], movement: 0.003, samples: 3000)
+        XCTAssertLessThan(back.tiltDegrees, 5)
+        XCTAssertTrue(back.isPlausible)
+        let screenDown = Calibration(startUnix: 0, endUnix: 30, gravity: [0.0, 0.2, 0.98], movement: 0.003, samples: 3000)
+        XCTAssertTrue(screenDown.isPlausible)
+    }
+
     func testGuidedScript() {
         let times = GuidedTest.steps.map(\.at)
         XCTAssertEqual(times, times.sorted())

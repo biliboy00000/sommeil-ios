@@ -62,10 +62,22 @@ struct RecordingView: View {
                 }
             } else {
                 Label("Enregistrement en cours", systemImage: "waveform.path.ecg").font(.headline)
-                if let movement = live.calibrationMovement, movement >= 0.02 {
+                if let tilt = live.calibrationTilt, tilt > Calibration.maxPlausibleTilt {
+                    Text("Le téléphone était incliné de \(Int(tilt.rounded()))° pendant la calibration : "
+                         + "si tu n'étais pas sur le dos, recommence-la.")
+                        .font(.footnote).foregroundStyle(.orange)
+                } else if let movement = live.calibrationMovement, movement >= Calibration.maxStillMovement {
                     Text("Tu as bougé pendant la calibration : la position « sur le dos » sera moins précise.")
                         .font(.footnote).foregroundStyle(.orange)
                 }
+                Button {
+                    recorder.recalibrate()
+                } label: {
+                    Label("Recommencer la calibration (30 s sur le dos)", systemImage: "arrow.counterclockwise")
+                        .font(.subheadline)
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

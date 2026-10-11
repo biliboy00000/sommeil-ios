@@ -141,6 +141,22 @@ public struct Calibration: Codable, Equatable, Sendable {
         self.movement = movement
         self.samples = samples
     }
+
+    /// Inclinaison du téléphone par rapport à « à plat » (écran vers le haut ou vers le bas), en degrés.
+    /// Sur le dos, téléphone posé sur le sternum, elle reste faible.
+    public var tiltDegrees: Double {
+        guard gravity.count == 3 else { return 0 }
+        let norm = (gravity[0] * gravity[0] + gravity[1] * gravity[1] + gravity[2] * gravity[2]).squareRoot()
+        guard norm > 0 else { return 0 }
+        return acos(min(1, abs(gravity[2]) / norm)) * 180 / Double.pi
+    }
+
+    /// Au-delà, on doute que la personne soit vraiment sur le dos pendant la calibration.
+    public static let maxPlausibleTilt = 35.0
+    /// Au-delà de cette agitation (g), la calibration est jugée perturbée.
+    public static let maxStillMovement = 0.02
+
+    public var isPlausible: Bool { tiltDegrees <= Self.maxPlausibleTilt && movement < Self.maxStillMovement }
 }
 
 /// Description d'une séance (session.json).
