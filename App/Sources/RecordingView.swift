@@ -80,8 +80,7 @@ struct RecordingView: View {
 
     private var recordingBody: some View {
         let live = recorder.live
-        return
-        NavigationStack {
+        return NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
                     Text(TimeText.duration(live.elapsed))
