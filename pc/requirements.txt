@@ -1,0 +1,7 @@
+numpy
+scipy
+sounddevice
+soundfile
+soxr
+plotly
+av

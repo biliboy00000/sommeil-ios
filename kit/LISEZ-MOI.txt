@@ -1,0 +1,194 @@
+SOMMEIL - enregistreur de nuit pour iPhone, avec réception sur PC Windows
+==========================================================================
+Version : {VERSION}
+
+L'app « Sommeil » enregistre toute la nuit, téléphone attaché sur la poitrine :
+les vibrations du cœur et du thorax (100 mesures par seconde), la respiration,
+la position, les mouvements et le son. Le matin, la nuit part toute seule sur
+le PC par le Wi-Fi, et le PC vérifie la qualité de l'enregistrement.
+En option, le PC enregistre en même temps un micro USB (Blue Yeti) près du lit,
+lancé automatiquement par l'app.
+
+CE N'EST PAS UN APPAREIL MÉDICAL. C'est un projet personnel en cours de
+développement : pour l'instant, l'app enregistre et vérifie la qualité des
+données ; le rapport complet (pouls, respiration, phases de sommeil) viendra
+dans une prochaine version.
+
+
+-------------------------------------------------------------
+CE QU'IL Y A DANS CE DOSSIER
+-------------------------------------------------------------
+  Sommeil.ipa                  -> l'app iPhone, à installer avec Sideloadly
+  1_INSTALLER.bat              -> prépare le PC (une seule fois)
+  5_RECEVOIR_IPHONE.bat        -> reçoit les nuits de l'iPhone et enregistre
+                                  le Blue Yeti quand l'app le demande
+  6_DEMARRAGE_AUTOMATIQUE.bat  -> ouvre le récepteur tout seul au démarrage
+                                  de Windows (facultatif)
+  *.py, requirements.txt       -> programmes utilisés par les .bat
+
+Place ce dossier à un endroit simple, par exemple
+C:\Users\<toi>\Documents\SuiviSommeil (pas dans un dossier OneDrive
+synchronisé : une nuit prend environ 0,5 Go).
+
+
+-------------------------------------------------------------
+CE QU'IL FAUT
+-------------------------------------------------------------
+- Un iPhone sous iOS 17 ou plus récent (testé sur iPhone 14 Pro, iOS 26).
+- Un PC Windows sur le même Wi-Fi que l'iPhone, et un câble pour brancher
+  l'iPhone au PC (seulement pour l'installation).
+- Un identifiant Apple (le tien suffit, c'est gratuit).
+- Une bande ou ceinture élastique large pour tenir le téléphone sur la poitrine.
+- Facultatif : un micro USB Blue Yeti.
+
+
+-------------------------------------------------------------
+ÉTAPE 1 - INSTALLER L'APP SUR L'IPHONE (environ 15 minutes)
+-------------------------------------------------------------
+L'app n'est pas sur l'App Store. On l'installe avec Sideloadly et un
+identifiant Apple gratuit. L'installation est valable 7 JOURS (voir plus bas).
+
+1. Sur le PC : si iTunes ou iCloud ont été installés depuis le Microsoft
+   Store, désinstalle-les. Sideloadly a besoin des versions du site d'Apple.
+2. Va sur https://sideloadly.io : installe Sideloadly pour Windows, puis
+   iTunes et iCloud avec les liens « web version » donnés sur cette page.
+3. Branche l'iPhone au PC avec le câble, déverrouille-le et réponds
+   « Faire confiance ».
+4. Ouvre Sideloadly :
+   - la case « iDevice » doit afficher ton iPhone (sinon : iTunes manque) ;
+   - glisse le fichier Sommeil.ipa de ce dossier sur la grande icône « IPA » ;
+   - dans « Apple Account », tape l'adresse e-mail de ton identifiant Apple ;
+   - clique sur « Start », tape ton mot de passe, puis le code à 6 chiffres
+     qui s'affiche sur l'iPhone ; attends « Done ».
+   Sideloadly dit n'envoyer ces informations qu'à Apple. Beaucoup de gens
+   préfèrent utiliser un identifiant Apple secondaire, créé exprès.
+5. Sur l'iPhone : Réglages > Général > VPN et gestion de l'appareil >
+   ton adresse e-mail > « Faire confiance ».
+6. Sur l'iPhone : Réglages > Confidentialité et sécurité > Mode développeur
+   (tout en bas) > activer. L'iPhone redémarre ; confirme « Activer ».
+7. Ouvre l'app Sommeil. Réponds « Autoriser » pour le micro et, plus tard,
+   pour le réseau local.
+
+Tous les 7 jours : l'app affiche sa date d'expiration et prévient avant une
+nuit si elle approche. Pour renouveler, rebranche l'iPhone et refais
+« Start » dans Sideloadly avec le même fichier. Envoie tes nuits au PC avant,
+par prudence.
+
+
+-------------------------------------------------------------
+ÉTAPE 2 - PRÉPARER LE PC (environ 5 minutes)
+-------------------------------------------------------------
+1. Double-clique sur 1_INSTALLER.bat.
+   - Si Windows affiche « Windows a protégé votre ordinateur » : clique sur
+     « Informations complémentaires » puis « Exécuter quand même ».
+   - Si Python n'est pas installé, il s'installe tout seul ; il faudra
+     ensuite FERMER la fenêtre et relancer 1_INSTALLER.bat une 2e fois.
+2. Double-clique sur 5_RECEVOIR_IPHONE.bat. Une fenêtre noire affiche :
+     - une ADRESSE, par exemple 192.168.1.23:8010
+     - un CODE DU PC à 6 chiffres
+   La première fois, Windows demande d'autoriser Python sur le réseau :
+   coche « Réseaux privés » et clique sur « Autoriser ».
+   Laisse cette fenêtre ouverte (tu peux la réduire). Tant qu'elle est
+   ouverte, le PC ne se met pas en veille (l'écran, lui, peut s'éteindre).
+
+
+-------------------------------------------------------------
+ÉTAPE 3 - RELIER L'APP AU PC
+-------------------------------------------------------------
+Dans l'app : roue dentée (Réglages) en haut à droite.
+1. « Adresse du PC » : recopie l'adresse de la fenêtre noire.
+2. « Code du PC » : recopie le code à 6 chiffres. Il protège le micro :
+   sans lui, personne d'autre sur le Wi-Fi ne peut lancer un enregistrement.
+3. « Tester la connexion » : il doit afficher « Connexion réussie » et
+   « Code accepté ».
+4. Règle aussi l'heure de ton réveil (sert à prévoir la batterie).
+
+Facultatif : double-clique sur 6_DEMARRAGE_AUTOMATIQUE.bat. Le récepteur
+s'ouvrira alors tout seul (réduit) à chaque démarrage de Windows : tu n'auras
+plus à toucher au PC. Double-clique à nouveau pour désactiver.
+
+Si le PC change d'adresse sur le Wi-Fi un jour, recopie la nouvelle adresse.
+
+
+-------------------------------------------------------------
+ÉTAPE 4 - LE BLUE YETI (facultatif)
+-------------------------------------------------------------
+Branche-le au PC. Mode CARDIOÏDE (symbole en forme de cœur à l'arrière),
+face avant vers ta tête, à moins d'1 mètre, gain (molette) aux 3/4.
+Rien d'autre à faire : avec le code renseigné et l'option « Lancer le Blue
+Yeti avec chaque enregistrement » activée, il démarre et s'arrête avec l'app.
+Si quelqu'un dort avec toi, préviens-le : il sera enregistré aussi.
+
+
+-------------------------------------------------------------
+ÉTAPE 5 - TROUVER LA BONNE PLACE DU TÉLÉPHONE
+-------------------------------------------------------------
+- Le téléphone se place sur le BAS DU STERNUM, directement sur la peau,
+  le dos du téléphone contre toi, le haut vers la tête.
+- Tiens-le avec une bande ou ceinture élastique LARGE (pas de lacet ni de
+  ficelle), et un t-shirt près du corps par-dessus. Pour que la bande ne
+  descende pas, accroche-la au t-shirt avec 2 ou 3 épingles à nourrice, ou
+  utilise des bretelles.
+- Serrage : le téléphone ne doit pas bouger quand tu te tournes, mais tu
+  dois pouvoir respirer à fond et glisser un doigt sous la bande. Le signal
+  reste souvent très bon avec une bande peu serrée : privilégie le confort.
+- Dans l'app, « Test de placement » : allongé sur le dos, puis sur chaque
+  côté, la qualité « cœur » doit rester au-dessus de 50.
+
+
+-------------------------------------------------------------
+CHAQUE SOIR
+-------------------------------------------------------------
+1. Batterie : au moins 60 % (une nuit de 8 h utilise environ 40 %).
+   Charge AVANT de te coucher, jamais pendant que le téléphone est sur toi.
+2. PC allumé, récepteur ouvert (ou démarrage automatique activé).
+3. Attache le téléphone, allonge-toi SUR LE DOS, touche « Commencer la nuit »
+   et ne bouge plus pendant 30 secondes (calibration). Si l'app dit que le
+   téléphone est incliné, touche « Recommencer la calibration ».
+4. Verrouille l'écran. Ne ferme pas l'app depuis le sélecteur d'apps.
+   Mode « Ne pas déranger » conseillé.
+
+CHAQUE MATIN
+1. Touche « Arrêter ». La nuit part toute seule vers le PC (garde l'app
+   ouverte une minute ou deux pendant l'envoi).
+2. Sur le PC, la fenêtre noire affiche la vérification. Elle est aussi
+   enregistrée dans iphone_v2\<date de la nuit>\verification.txt.
+Sans Wi-Fi : dans l'app, ouvre la nuit > « Partager » pour obtenir un .zip.
+
+
+-------------------------------------------------------------
+EN CAS DE PROBLÈME
+-------------------------------------------------------------
+« Pas de réponse » au test de connexion
+  -> même Wi-Fi pour le PC et l'iPhone (pas le Wi-Fi invités) ;
+  -> fenêtre noire du récepteur ouverte ;
+  -> sur le PC : Paramètres > Réseau et Internet > ton réseau > Type de
+     profil réseau = « Privé » ;
+  -> sur l'iPhone : Réglages > Confidentialité et sécurité > Réseau local >
+     Sommeil activé.
+« Code du PC incorrect » -> recopie le code affiché par la fenêtre noire.
+« Développeur non approuvé » à l'ouverture de l'app -> étape 1, point 5.
+L'app ne s'ouvre plus -> les 7 jours sont passés : refais l'étape 1, point 4.
+La case « iDevice » de Sideloadly reste vide -> installe iTunes (version du
+  site d'Apple), rebranche l'iPhone et réponds « Faire confiance ».
+Blue Yeti en orange dans l'app -> vérifie qu'il est branché et que la
+  fenêtre du récepteur est ouverte ; l'iPhone continue d'enregistrer seul.
+Pour toute autre question : dans l'app, « Exporter le journal de diagnostic ».
+
+
+-------------------------------------------------------------
+IMPORTANT
+-------------------------------------------------------------
+- Ne charge JAMAIS le téléphone quand il est attaché sur toi sous la
+  couette : il chauffe.
+- Rien autour du cou. Enlève la bande si elle laisse des marques, provoque
+  des fourmillements ou gêne la respiration.
+- Ce n'est pas un appareil médical : les mesures sont des estimations. Si
+  des pauses respiratoires reviennent souvent, si tu ronfles fort ou si tu
+  es très fatigué la journée, parles-en à un médecin.
+- Tes données restent sur ton iPhone et ton PC.
+
+Code source et dernière version :
+  https://github.com/biliboy00000/sommeil-ios
+  Paquet complet le plus récent :
+  https://github.com/biliboy00000/sommeil-ios/releases/latest/download/SuiviSommeil_installation.zip

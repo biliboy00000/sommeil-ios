@@ -69,6 +69,8 @@ jobs:
           cp -R build/Build/Products/Release-iphoneos/Sommeil.app Payload/
           zip -qry Sommeil.ipa Payload
           ls -lh Sommeil.ipa
+      - name: Fabriquer le paquet d'installation complet
+        run: python3 kit/construire_kit.py Sommeil.ipa "0.1.${{ github.run_number }}" SuiviSommeil_installation.zip
       - name: Garder le journal de compilation
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,11 +78,13 @@ jobs:
           name: journal-compilation
           path: build.log
           if-no-files-found: ignore
-      - name: Garder l'app
+      - name: Garder l'app et le paquet
         uses: actions/upload-artifact@v4
         with:
           name: Sommeil-ipa
-          path: Sommeil.ipa
+          path: |
+            Sommeil.ipa
+            SuiviSommeil_installation.zip
       - name: Publier la version (lien de téléchargement fixe)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
@@ -88,7 +92,10 @@ jobs:
           tag_name: v0.1.${{ github.run_number }}
           name: Sommeil 0.1.${{ github.run_number }}
           make_latest: true
-          files: Sommeil.ipa
+          files: |
+            Sommeil.ipa
+            SuiviSommeil_installation.zip
           body: |
             Version compilée automatiquement depuis ${{ github.sha }}.
-            À installer avec Sideloadly (voir LISEZ-MOI).
+            Pour une première installation, prends SuiviSommeil_installation.zip
+            (app + fichiers du PC + mode d'emploi). Pour mettre à jour l'app seule, Sommeil.ipa.
