@@ -25,6 +25,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, MXMetricManagerSubscri
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         MXMetricManager.shared.add(self)
         Diagnostics.shared.trimIfNeeded()
+        // Avant la fin du lancement : la réponse à une notification peut être ce qui a ouvert l'app.
+        NightReminder.shared.install()
         return true
     }
 

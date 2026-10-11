@@ -5,7 +5,7 @@ import CoreMotion
 import SleepCore
 
 /// Chef d'orchestre d'un enregistrement : dossier de la séance, micro, capteurs,
-/// journal, état de l'iPhone, calibration, test guidé.
+/// journal, état de l'iPhone, calibration, test guidé, début différé.
 /// Toutes les méthodes publiques s'appellent depuis le fil principal.
 final class Recorder: ObservableObject {
     enum Kind: String {
@@ -28,6 +28,8 @@ final class Recorder: ObservableObject {
         var calibrationRemaining: Double?
         var calibrationMovement: Double?
         var calibrationTilt: Double?
+        /// Calibration automatique en cours (nuit au début différé) : on attend un moment calme sur le dos.
+        var autoCalibrating = false
         var guidedDisplay: String?
         var guidedNext: String?
         var interruptions = 0
@@ -41,6 +43,9 @@ final class Recorder: ObservableObject {
 
     @Published private(set) var isRecording = false
     @Published private(set) var isPlacementRunning = false
+    /// Nuit programmée : le micro tourne (l'app reste active) mais rien n'est enregistré avant `waitUntil`.
+    @Published private(set) var isWaiting = false
+    @Published private(set) var waitUntil: Date?
     @Published private(set) var kind: Kind = .night
     @Published private(set) var live = Live()
     @Published private(set) var sessionDirectory: URL?
@@ -50,6 +55,8 @@ final class Recorder: ObservableObject {
     var settings = AppSettings()
     /// Appelé quand une séance se termine normalement.
     var onFinished: ((URL) -> Void)?
+    /// Appelé si une nuit programmée n'a pas pu démarrer à l'heure prévue.
+    var onDelayedStartFailed: ((String) -> Void)?
 
     private lazy var motion = MotionCapture(queue: sensorQueue)
     private var audio: AudioCapture?
@@ -78,6 +85,10 @@ final class Recorder: ObservableObject {
     private var yetiRequested = false
     private var lastYetiPoll = 0.0
     private var lastYetiSummary = ""
+    private var waitTimer: DispatchSourceTimer?
+    private var waitTicks = 0
+    private var pendingDelayedStart: DelayedStart?
+    private var autoSearch = AutoCalibrationSearch()
 
     // Utilisés sur la file des capteurs.
     private var calibrationActive = false
@@ -126,23 +137,118 @@ final class Recorder: ObservableObject {
 
     /// Démarre une nuit ou un test guidé. `completion` reçoit un message d'erreur, ou nil si tout va bien.
     func start(kind: Kind, completion: @escaping (String?) -> Void) {
-        guard !isRecording else { return completion("Un enregistrement est déjà en cours.") }
+        guard !isRecording, !isWaiting else { return completion("Un enregistrement est déjà en cours ou programmé.") }
         if isPlacementRunning { stopPlacement() }
         AVAudioApplication.requestRecordPermission { [weak self] granted in
             DispatchQueue.main.async {
                 guard let self else { return }
-                guard granted else {
-                    completion("L'accès au micro est refusé. Autorise-le dans Réglages › Confidentialité "
-                               + "et sécurité › Microphone › Sommeil. Sans micro, l'app ne peut pas continuer "
-                               + "écran verrouillé.")
-                    return
-                }
+                guard granted else { return completion(Self.microphoneDenied) }
                 completion(self.begin(kind: kind))
             }
         }
     }
 
-    private func begin(kind: Kind) -> String? {
+    static let microphoneDenied = "L'accès au micro est refusé. Autorise-le dans Réglages › Confidentialité "
+        + "et sécurité › Microphone › Sommeil. Sans micro, l'app ne peut pas continuer écran verrouillé."
+
+    // MARK: - Début différé (« Démarrer la nuit ? Oui, dans 45 min »)
+
+    /// Démarre une nuit tout de suite (délai 0) ou après `delayMinutes` minutes d'attente silencieuse.
+    /// À appeler app au premier plan : iOS n'autorise pas à allumer le micro depuis l'arrière-plan.
+    func startNight(delayMinutes: Int, source: String, completion: @escaping (String?) -> Void) {
+        guard !isRecording, !isWaiting else { return completion("Une nuit est déjà en cours ou programmée.") }
+        let minutes = NightDelay.clamp(Double(delayMinutes))
+        guard minutes > 0 else { return start(kind: .night, completion: completion) }
+        if isPlacementRunning { stopPlacement() }
+        let request = DelayedStart(requestedUnix: Clock.unix, delayMinutes: minutes, source: source)
+        AVAudioApplication.requestRecordPermission { [weak self] granted in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard granted else { return completion(Self.microphoneDenied) }
+                completion(self.beginWaiting(request))
+            }
+        }
+    }
+
+    private func beginWaiting(_ request: DelayedStart) -> String? {
+        guard !isRecording, !isWaiting else { return "Une nuit est déjà en cours ou programmée." }
+        // Le micro tourne dès maintenant sans rien écrire : c'est ce qui garde l'app active écran verrouillé,
+        // et iOS ne permettrait pas de l'allumer plus tard depuis l'arrière-plan.
+        let capture = AudioCapture()
+        capture.onEvent = { [weak self] type, message, values, info in
+            self?.log(type, message, values: values, info: info)
+        }
+        capture.onLevel = { [weak self] level in
+            DispatchQueue.main.async { self?.live.level = level }
+        }
+        do {
+            try capture.start()
+        } catch {
+            capture.stop()
+            return "Le micro n'a pas pu démarrer (\(error.localizedDescription)). Sans micro, l'app ne peut pas "
+                + "attendre écran verrouillé."
+        }
+        audio = capture
+        pendingDelayedStart = request
+        let due = Date(timeIntervalSince1970: request.requestedUnix + Double(request.delayMinutes) * 60)
+        live = Live()
+        waitUntil = due
+        waitTicks = 0
+        isWaiting = true
+        UIApplication.shared.isIdleTimerDisabled = false
+        Diagnostics.shared.log("Nuit programmée \(NightDelay.text(request.delayMinutes)) "
+                               + "(début à \(TimeText.hourMinute(due.timeIntervalSince1970)), depuis : \(request.source))")
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(wallDeadline: .now() + 1, repeating: 1, leeway: .milliseconds(200))
+        timer.setEventHandler { [weak self] in self?.waitTick() }
+        timer.resume()
+        waitTimer = timer
+        return nil
+    }
+
+    private func waitTick() {
+        guard isWaiting, let waitUntil else { return }
+        if Date() >= waitUntil {
+            finishWaiting(automatic: true)
+            return
+        }
+        waitTicks += 1
+        if waitTicks % 15 == 0, audio?.isRunning == false {
+            audio?.ensureRunning(reason: "attente du début de la nuit")
+        }
+    }
+
+    /// Fin de l'attente : la nuit commence. `automatic` : personne ne guide la calibration (heure atteinte,
+    /// sans doute endormi) ; sinon (« Commencer maintenant »), calibration guidée comme d'habitude.
+    func finishWaiting(automatic: Bool) {
+        guard isWaiting else { return }
+        waitTimer?.cancel()
+        waitTimer = nil
+        isWaiting = false
+        waitUntil = nil
+        if let error = begin(kind: .night, automaticCalibration: automatic) {
+            Diagnostics.shared.log("La nuit programmée n'a pas pu démarrer : \(error)")
+            audio?.stop()
+            audio = nil
+            pendingDelayedStart = nil
+            onDelayedStartFailed?(error)
+        }
+    }
+
+    /// Annule une nuit programmée (rien n'a été enregistré).
+    func cancelWaiting() {
+        guard isWaiting else { return }
+        waitTimer?.cancel()
+        waitTimer = nil
+        audio?.stop()
+        audio = nil
+        pendingDelayedStart = nil
+        isWaiting = false
+        waitUntil = nil
+        Diagnostics.shared.log("Nuit programmée annulée")
+    }
+
+    private func begin(kind: Kind, automaticCalibration: Bool = false) -> String? {
         let now = Clock.now
         let id = SessionInfo.makeID(startUnix: now.unix) + (kind == .guided ? "_test" : "")
         let directory = Self.sessionsRoot.appendingPathComponent(id, isDirectory: true)
@@ -158,6 +264,8 @@ final class Recorder: ObservableObject {
             return "Impossible de créer le dossier de la séance : \(error.localizedDescription)"
         }
 
+        let delayed = kind == .night ? pendingDelayedStart : nil
+        pendingDelayedStart = nil
         var session = SessionInfo(id: id, kind: kind.rawValue, appVersion: DeviceInfo.appVersion,
                                   device: DeviceInfo.model, systemVersion: DeviceInfo.systemVersion,
                                   startUnix: now.unix, startUptime: now.uptime, nominalRate: MotionCapture.rate,
@@ -167,28 +275,45 @@ final class Recorder: ObservableObject {
         session.audioFormat = AudioCapture.formatName
         session.audioSampleRate = AudioCapture.sampleRate
         session.audioSegmentSeconds = AudioCapture.segmentSeconds
+        session.delayedStart = delayed
+        session.calibrationMode = automaticCalibration ? "automatique" : "guidee"
 
         self.kind = kind
         sessionDirectory = directory
         startUptime = now.uptime
         calibrationStartUptime = now.uptime
         stopping = false
-        log(EventType.sessionStart, "Début : \(kind.label)", values: ["batterie": DeviceInfo.batteryLevel() ?? -1],
-            info: ["appareil": session.device, "ios": session.systemVersion, "app": session.appVersion,
-                   "capteurs_bruts": settings.rawSensors ? "oui" : "non",
-                   "api_haute_frequence": session.highRateAPI?.description ?? "?"])
+        var startInfo = ["appareil": session.device, "ios": session.systemVersion, "app": session.appVersion,
+                         "capteurs_bruts": settings.rawSensors ? "oui" : "non",
+                         "api_haute_frequence": session.highRateAPI?.description ?? "?",
+                         "calibration": session.calibrationMode ?? "?"]
+        var startValues = ["batterie": DeviceInfo.batteryLevel() ?? -1]
+        if let delayed {
+            startInfo["debut_differe"] = delayed.source
+            startValues["attente_min"] = Double(delayed.delayMinutes)
+            startValues["demande_unix"] = delayed.requestedUnix
+        }
+        log(EventType.sessionStart,
+            delayed.map { "Début : \(kind.label) (programmée \($0.delayMinutes) min plus tôt)" } ?? "Début : \(kind.label)",
+            values: startValues, info: startInfo)
 
         // Le micro d'abord : c'est lui qui garde l'app active écran verrouillé.
         do {
-            let capture = try AudioCapture(sessionDirectory: directory)
-            capture.onEvent = { [weak self] type, message, values, info in
-                self?.log(type, message, values: values, info: info)
+            if let waiting = audio {
+                // Nuit programmée : le micro tourne déjà, on commence simplement à écrire.
+                try waiting.beginWriting(sessionDirectory: directory)
+                waiting.ensureRunning(reason: "début de la nuit programmée")
+            } else {
+                let capture = try AudioCapture(sessionDirectory: directory)
+                capture.onEvent = { [weak self] type, message, values, info in
+                    self?.log(type, message, values: values, info: info)
+                }
+                capture.onLevel = { [weak self] level in
+                    DispatchQueue.main.async { self?.live.level = level }
+                }
+                try capture.start()
+                audio = capture
             }
-            capture.onLevel = { [weak self] level in
-                DispatchQueue.main.async { self?.live.level = level }
-            }
-            try capture.start()
-            audio = capture
         } catch {
             log(EventType.error, "Le micro n'a pas pu démarrer : \(error.localizedDescription)")
             closeLogs()
@@ -229,13 +354,18 @@ final class Recorder: ObservableObject {
         writeInfo()
 
         speaker.enabled = settings.voicePrompts
-        if kind == .night {
+        if kind == .night && !automaticCalibration {
             speaker.say("Allonge-toi sur le dos, et ne bouge plus pendant trente secondes.")
         }
         UIApplication.shared.isIdleTimerDisabled = (kind == .guided)
 
         live = Live()
-        live.calibrationRemaining = Self.calibrationSeconds
+        if automaticCalibration {
+            autoSearch = AutoCalibrationSearch()
+            live.autoCalibrating = true
+        } else {
+            live.calibrationRemaining = Self.calibrationSeconds
+        }
         live.battery = DeviceInfo.batteryLevel()
         lastClockPoint = -100
         lastStateSample = -100
@@ -245,7 +375,9 @@ final class Recorder: ObservableObject {
         lastThermal = DeviceInfo.thermalState()
         lowBatteryLogged = false
         isRecording = true
-        log(EventType.calibrationStart, "Début de la calibration (sur le dos, 30 s)")
+        log(EventType.calibrationStart, automaticCalibration
+            ? "Calibration automatique : recherche d'un moment calme sur le dos (tranches de 30 s)"
+            : "Début de la calibration (sur le dos, 30 s)")
 
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 0.5, repeating: 0.5, leeway: .milliseconds(100))
@@ -317,6 +449,8 @@ final class Recorder: ObservableObject {
         if live.calibrationRemaining != nil {
             let remaining = Self.calibrationSeconds - (now.uptime - calibrationStartUptime)
             if remaining <= 0 { finishCalibration(info: info, now: now) } else { live.calibrationRemaining = remaining }
+        } else if live.autoCalibrating, now.uptime - calibrationStartUptime >= AutoCalibrationSearch.windowSeconds {
+            takeAutoCalibrationWindow(now: now)
         }
 
         // Test guidé.
@@ -404,10 +538,7 @@ final class Recorder: ObservableObject {
         } else {
             message = "Calibration terminée, mais tu as bougé"
         }
-        log(EventType.calibrationEnd, message,
-            values: ["gx": result.gravity[0], "gy": result.gravity[1], "gz": result.gravity[2],
-                     "agitation_g": result.movement, "inclinaison_deg": result.tiltDegrees,
-                     "mesures": Double(result.samples)])
+        log(EventType.calibrationEnd, message, values: Self.calibrationValues(result))
         if kind == .night {
             if result.isPlausible {
                 speaker.say("Calibration terminée. Bonne nuit.")
@@ -418,9 +549,67 @@ final class Recorder: ObservableObject {
         }
     }
 
+    private static func calibrationValues(_ c: Calibration, extra: [String: Double] = [:]) -> [String: Double] {
+        var values = ["agitation_g": c.movement, "inclinaison_deg": c.tiltDegrees, "mesures": Double(c.samples),
+                      "debut_unix": c.startUnix]
+        if c.gravity.count == 3 {
+            values["gx"] = c.gravity[0]
+            values["gy"] = c.gravity[1]
+            values["gz"] = c.gravity[2]
+        }
+        return values.merging(extra) { _, new in new }
+    }
+
+    /// Calibration automatique : examine la dernière tranche de 30 s.
+    private func takeAutoCalibrationWindow(now: (uptime: Double, unix: Double)) {
+        var window: Calibration?
+        let windowStart = Clock.unix(fromUptime: calibrationStartUptime)
+        sensorQueue.sync {
+            window = calibration.result(startUnix: windowStart, endUnix: now.unix)
+            calibration = CalibrationAccumulator()
+        }
+        calibrationStartUptime = now.uptime
+        guard let window else { return }
+        switch autoSearch.offer(window) {
+        case .accepted:
+            sensorQueue.sync { calibrationActive = false }
+            live.autoCalibrating = false
+            info?.calibration = window
+            writeInfo()
+            live.calibrationTilt = window.tiltDegrees
+            live.calibrationMovement = window.movement
+            log(EventType.calibrationEnd, "Calibration automatique : moment calme sur le dos trouvé",
+                values: Self.calibrationValues(window, extra: ["tranches": Double(autoSearch.windows)]))
+        case .provisional:
+            // En attendant mieux, on garde la meilleure tranche vue (utile si l'app s'arrête).
+            info?.calibration = window
+            writeInfo()
+        case .ignored:
+            break
+        }
+    }
+
+    /// À l'arrêt : la calibration automatique n'a pas trouvé de moment calme sur le dos.
+    private func endAutoCalibrationIfNeeded() {
+        guard live.autoCalibrating else { return }
+        live.autoCalibrating = false
+        if let best = autoSearch.best {
+            live.calibrationTilt = best.tiltDegrees
+            live.calibrationMovement = best.movement
+            log(EventType.calibrationEnd, "Calibration automatique : aucun moment calme sur le dos trouvé, "
+                + "meilleure tranche gardée", values: Self.calibrationValues(best, extra: ["tranches": Double(autoSearch.windows)]))
+        } else {
+            log(EventType.calibrationEnd, "Calibration automatique : aucune tranche utilisable")
+        }
+    }
+
     /// Relance les 30 secondes de calibration (sur le dos, sans bouger) pendant un enregistrement.
     func recalibrate() {
         guard isRecording, live.calibrationRemaining == nil else { return }
+        if live.autoCalibrating {
+            live.autoCalibrating = false
+            log(EventType.info, "Calibration automatique remplacée par une calibration guidée")
+        }
         sensorQueue.sync {
             calibration = CalibrationAccumulator()
             calibrationActive = true
@@ -476,6 +665,7 @@ final class Recorder: ObservableObject {
             summaries = motion.trackers.map { ($0.key, $0.value.summaryValues) }
             finalCounts = motion.counts
         }
+        endAutoCalibrationIfNeeded()
         // Compteurs à jour pour la dernière ligne d'état (ils ne sont rafraîchis que toutes les 5 s).
         live.samples = finalCounts
         for (stream, values) in summaries {
@@ -570,6 +760,11 @@ final class Recorder: ObservableObject {
     }
 
     @objc private func willTerminate() {
+        if isWaiting {
+            Diagnostics.shared.log("iOS ferme l'app pendant l'attente d'une nuit programmée")
+            audio?.stop()
+            return
+        }
         guard isRecording else { return }
         log(EventType.willTerminate, "iOS ferme l'app")
         motion.stop()

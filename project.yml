@@ -27,6 +27,8 @@ targets:
       - path: App/Resources
     dependencies:
       - package: SleepCore
+      # Barre de 0 à 2 h dans la notification « Démarrer la nuit ? » (appui long).
+      - target: SommeilNotification
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.suivisommeil.enregistreur
@@ -64,6 +66,38 @@ targets:
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         ITSAppUsesNonExemptEncryption: false
+
+  # Extension de notification : ce qu'affiche « Démarrer la nuit ? » quand on appuie longuement dessus.
+  SommeilNotification:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: App/NotificationExtension
+    dependencies:
+      - package: SleepCore
+      - sdk: UserNotifications.framework
+      - sdk: UserNotificationsUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.suivisommeil.enregistreur.notification
+        PRODUCT_NAME: SommeilNotification
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Manual
+        SKIP_INSTALL: YES
+    info:
+      path: App/SommeilNotification-Info.plist
+      properties:
+        CFBundleDisplayName: Sommeil
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.content-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationViewController
+          NSExtensionAttributes:
+            UNNotificationExtensionCategory: DEBUT_NUIT
+            UNNotificationExtensionInitialContentSizeRatio: 0.5
+            UNNotificationExtensionDefaultContentHidden: true
+            UNNotificationExtensionUserInteractionEnabled: true
 
 schemes:
   Sommeil:

@@ -188,6 +188,10 @@ public struct SessionInfo: Codable, Equatable, Sendable {
     public var highRateAPI: [String: Bool]?
     /// Date d'expiration de l'installation de l'app (profil Apple), si connue.
     public var installExpiryUnix: Double?
+    /// Présent si la nuit a été lancée avec un délai (« Oui, dans 45 min »).
+    public var delayedStart: DelayedStart?
+    /// "guidee" (30 s sur le dos au début) ou "automatique" (cherchée pendant la nuit).
+    public var calibrationMode: String?
     public var notes: [String]
 
     public init(id: String, kind: String, appVersion: String, device: String, systemVersion: String,

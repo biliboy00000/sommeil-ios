@@ -7,9 +7,6 @@ struct HomeView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var uploader: Uploader
 
-    @State private var alert: AlertMessage?
-    @State private var confirmNight = false
-    @State private var confirmText = ""
     @State private var sharedFile: SharedFile?
     @State private var preparingExport = false
 
@@ -31,17 +28,17 @@ struct HomeView: View {
                 }
             }
             .refreshable { model.refresh() }
-            .onAppear { model.refresh() }
+            .onAppear {
+                model.refresh()
+                model.runPendingReminder()
+            }
         }
-        .fullScreenCover(isPresented: Binding(get: { recorder.isRecording }, set: { _ in })) {
+        .fullScreenCover(isPresented: Binding(get: { recorder.isRecording || recorder.isWaiting }, set: { _ in })) {
             RecordingView()
         }
-        .alert(item: $alert) { Alert(title: Text($0.title), message: Text($0.message)) }
-        .confirmationDialog("Commencer quand même ?", isPresented: $confirmNight, titleVisibility: .visible) {
-            Button("Commencer la nuit") { startNight() }
-            Button("Annuler", role: .cancel) {}
-        } message: {
-            Text(confirmText)
+        .alert(item: $model.alert) { Alert(title: Text($0.title), message: Text($0.message)) }
+        .sheet(item: $model.startSheet, onDismiss: { model.performQueuedStart() }) { request in
+            StartNightSheet(request: request)
         }
         .sheet(item: $sharedFile) { ShareSheet(items: [$0.url]) }
     }
@@ -77,7 +74,7 @@ struct HomeView: View {
                         valueColor: free < 2000 ? .red : .primary)
             }
             Button {
-                prepareNight()
+                model.presentStartSheet()
             } label: {
                 Label("Commencer la nuit", systemImage: "moon.zzz.fill")
                     .font(.headline)
@@ -89,7 +86,8 @@ struct HomeView: View {
         } header: {
             Text("Ce soir")
         } footer: {
-            Text("Les 30 premières secondes servent de calibration : allongé sur le dos, sans bouger. "
+            Text("Tu choisis quand l'enregistrement commence : tout de suite (30 secondes de calibration, "
+                 + "allongé sur le dos sans bouger) ou jusqu'à 2 h plus tard (l'app attend en silence). "
                  + "Ensuite tu peux verrouiller l'écran. " + Texts.charging)
         }
     }
@@ -134,7 +132,7 @@ struct HomeView: View {
             }
             Button {
                 recorder.start(kind: .guided) { error in
-                    if let error { alert = AlertMessage(title: "Impossible de démarrer", message: error) }
+                    if let error { model.alert = AlertMessage(title: "Impossible de démarrer", message: error) }
                 }
             } label: {
                 Label("Test guidé de 10 minutes", systemImage: "list.number")
@@ -176,45 +174,6 @@ struct HomeView: View {
 
     // MARK: - Actions
 
-    private func prepareNight() {
-        var warnings: [String] = []
-        let forecast = model.batteryForecast
-        if forecast.verdict == .insuffisant || forecast.verdict == .juste, let predicted = forecast.predicted {
-            warnings.append("La batterie risque d'être presque vide au réveil (environ \(max(0, predicted).percentText)). "
-                            + "Charge le téléphone avant de te coucher, jamais attaché sur toi.")
-        } else if forecast.predicted == nil, let level = model.batteryLevel, level < 0.5 {
-            // Consommation pas encore mesurée : une nuit entière avec moins de la moitié est risquée.
-            warnings.append("La batterie n'est qu'à \(level.percentText). Pour une nuit entière, charge le téléphone "
-                            + "avant de te coucher, jamais attaché sur toi.")
-        }
-        if let days = model.installation?.daysRemaining(), days < 0.6 {
-            warnings.append("L'installation de l'app expire dans moins de 15 heures. Réinstalle-la avec Sideloadly "
-                            + "avant de dormir, sinon l'enregistrement risque de s'arrêter.")
-        }
-        if let free = DeviceInfo.freeDiskMB, free < 2000 {
-            warnings.append("Il reste moins de 2 Go de stockage. Une nuit peut prendre jusqu'à 1 Go.")
-        }
-        if settings.wantsYeti && settings.pcCode.trimmingCharacters(in: .whitespaces).isEmpty {
-            warnings.append("Le code du PC n'est pas renseigné : le Blue Yeti ne démarrera pas. Recopie-le dans "
-                            + "Réglages (il s'affiche dans la fenêtre de 5_RECEVOIR_IPHONE.bat).")
-        }
-        if ProcessInfo.processInfo.isLowPowerModeEnabled {
-            warnings.append("Le mode économie d'énergie est activé : il peut perturber l'enregistrement.")
-        }
-        if warnings.isEmpty {
-            startNight()
-        } else {
-            confirmText = warnings.joined(separator: "\n\n")
-            confirmNight = true
-        }
-    }
-
-    private func startNight() {
-        recorder.start(kind: .night) { error in
-            if let error { alert = AlertMessage(title: "Impossible de démarrer", message: error) }
-        }
-    }
-
     private func exportDiagnostic() {
         preparingExport = true
         DispatchQueue.global(qos: .userInitiated).async {
@@ -224,7 +183,7 @@ struct HomeView: View {
                 switch result {
                 case .success(let url): sharedFile = SharedFile(url: url)
                 case .failure(let error):
-                    alert = AlertMessage(title: "Export impossible", message: error.localizedDescription)
+                    model.alert = AlertMessage(title: "Export impossible", message: error.localizedDescription)
                 }
             }
         }

@@ -67,6 +67,9 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/Sommeil.app Payload/
+          # L'extension de notification (barre de 0 à 2 h) doit être dans l'app.
+          test -f Payload/Sommeil.app/PlugIns/SommeilNotification.appex/Info.plist
+          plutil -p Payload/Sommeil.app/PlugIns/SommeilNotification.appex/Info.plist | grep -E "CFBundleIdentifier|UNNotification|NSExtensionPrincipalClass"
           zip -qry Sommeil.ipa Payload
           ls -lh Sommeil.ipa
       - name: Fabriquer le paquet d'installation complet

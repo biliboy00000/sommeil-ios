@@ -102,6 +102,9 @@ Dans l'app : roue dentée (Réglages) en haut à droite.
 3. « Tester la connexion » : il doit afficher « Connexion réussie » et
    « Code accepté ».
 4. Règle aussi l'heure de ton réveil (sert à prévoir la batterie).
+5. Facultatif, « Rappel du soir » : active « Me proposer de démarrer la
+   nuit », choisis l'heure et réponds « Autoriser » aux notifications.
+   « Essayer la notification » l'envoie 5 secondes plus tard pour tester.
 
 Facultatif : double-clique sur 6_DEMARRAGE_AUTOMATIQUE.bat. Le récepteur
 s'ouvrira alors tout seul (réduit) à chaque démarrage de Windows : tu n'auras
@@ -142,9 +145,19 @@ CHAQUE SOIR
 1. Batterie : au moins 60 % (une nuit de 8 h utilise environ 40 %).
    Charge AVANT de te coucher, jamais pendant que le téléphone est sur toi.
 2. PC allumé, récepteur ouvert (ou démarrage automatique activé).
-3. Attache le téléphone, allonge-toi SUR LE DOS, touche « Commencer la nuit »
-   et ne bouge plus pendant 30 secondes (calibration). Si l'app dit que le
-   téléphone est incliné, touche « Recommencer la calibration ».
+3. Touche « Commencer la nuit » dans l'app, ou réponds à la notification
+   « Démarrer la nuit ? » (APPUI LONG dessus pour voir la barre). La barre
+   choisit quand l'enregistrement commence, de tout de suite à 2 h plus
+   tard, puis « Oui » (ou « Non » pour ce soir). « Oui » ouvre l'app un
+   instant : iOS l'exige pour allumer le micro.
+   - Tout de suite : attache le téléphone, allonge-toi SUR LE DOS et ne
+     bouge plus pendant 30 secondes (calibration). Si l'app dit que le
+     téléphone est incliné, touche « Recommencer la calibration ».
+   - Avec un délai : attache le téléphone et verrouille l'écran. L'app
+     attend en silence (rien n'est enregistré), puis enregistre jusqu'au
+     matin. La calibration se fait toute seule, pendant un moment calme
+     sur le dos. Le temps mis à t'endormir n'est mesuré que si
+     l'enregistrement a déjà commencé : un petit délai suffit.
 4. Verrouille l'écran. Ne ferme pas l'app depuis le sélecteur d'apps.
    Mode « Ne pas déranger » conseillé.
 
@@ -171,6 +184,17 @@ EN CAS DE PROBLÈME
 L'app ne s'ouvre plus -> les 7 jours sont passés : refais l'étape 1, point 4.
 La case « iDevice » de Sideloadly reste vide -> installe iTunes (version du
   site d'Apple), rebranche l'iPhone et réponds « Faire confiance ».
+Pas de notification « Démarrer la nuit ? » le soir
+  -> Réglages de l'iPhone > Notifications > Sommeil : autoriser ;
+  -> si un mode de concentration (Sommeil, Ne pas déranger) est actif à
+     cette heure-là : ajoute Sommeil à ses apps autorisées ;
+  -> pas de rappel le soir où une nuit est déjà lancée, ni après la date
+     d'expiration de l'installation ;
+  -> ouvre l'app une fois après la réinstallation (cela reprogramme les
+     rappels des 7 soirs suivants).
+Pas de barre en appuyant longuement sur la notification -> « Oui… » ouvre
+  l'app sur la même barre. Si Sideloadly refuse l'installation à cause de
+  l'extension de notification, préviens-moi.
 Blue Yeti en orange dans l'app -> vérifie qu'il est branché et que la
   fenêtre du récepteur est ouverte ; l'iPhone continue d'enregistrer seul.
 Pour toute autre question : dans l'app, « Exporter le journal de diagnostic ».

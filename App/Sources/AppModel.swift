@@ -152,6 +152,15 @@ enum SessionStore {
     }
 }
 
+/// Demande d'affichage de la feuille « Démarrer la nuit ? ».
+struct StartSheetRequest: Identifiable {
+    let id = UUID()
+    var minutes: Int
+    /// "app" ou "notification".
+    var source: String
+    var warnings: [String]
+}
+
 /// État général de l'app, partagé entre les écrans.
 final class AppModel: ObservableObject {
     let settings: AppSettings
@@ -163,6 +172,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var drainPerHour: Double?
     @Published private(set) var batteryLevel: Double?
     @Published var interruptedSessions: [URL] = []
+    @Published var alert: AlertMessage?
+    @Published var startSheet: StartSheetRequest?
+
+    /// Choix fait dans la feuille, exécuté une fois la feuille fermée.
+    private var queuedStart: (minutes: Int, source: String)?
+    /// Réponse à la notification reçue avant que l'app soit au premier plan.
+    private var pendingReminder: NightReminder.Request?
 
     init() {
         settings = AppSettings()
@@ -177,6 +193,9 @@ final class AppModel: ObservableObject {
                 self.uploader.upload(directory, address: self.settings.pcAddress) { [weak self] in self?.refresh() }
             }
         }
+        recorder.onDelayedStartFailed = { [weak self] error in
+            self?.alert = AlertMessage(title: "La nuit programmée n'a pas démarré", message: error)
+        }
         Diagnostics.shared.log("Lancement — \(DeviceInfo.model), iOS \(DeviceInfo.systemVersion), app \(DeviceInfo.appVersion)")
         let found = SessionStore.completeMissingSummaries(excluding: nil)
         if !found.isEmpty {
@@ -184,6 +203,10 @@ final class AppModel: ObservableObject {
             Diagnostics.shared.log("Séances interrompues trouvées : \(found.map(\.lastPathComponent))")
         }
         refresh()
+        NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive),
+                                               name: UIApplication.didBecomeActiveNotification, object: nil)
+        NightReminder.shared.setHandler { [weak self] request in self?.handle(request) }
+        updateReminders()
     }
 
     func refresh() {
@@ -201,6 +224,128 @@ final class AppModel: ObservableObject {
             BatteryForecast.predictedLevel(now: $0, drainPerHour: drainPerHour, hours: hours)
         }
         return (predicted, BatteryForecast.verdict(predictedEnd: predicted), wake)
+    }
+
+    // MARK: - Démarrer la nuit
+
+    /// Points à vérifier avant une nuit (batterie, installation, stockage, code du PC…).
+    func nightWarnings() -> [String] {
+        refresh()
+        var warnings: [String] = []
+        let forecast = batteryForecast
+        if forecast.verdict == .insuffisant || forecast.verdict == .juste, let predicted = forecast.predicted {
+            warnings.append("La batterie risque d'être presque vide au réveil (environ \(max(0, predicted).percentText)). "
+                            + "Charge le téléphone avant de te coucher, jamais attaché sur toi.")
+        } else if forecast.predicted == nil, let level = batteryLevel, level < 0.5 {
+            // Consommation pas encore mesurée : une nuit entière avec moins de la moitié est risquée.
+            warnings.append("La batterie n'est qu'à \(level.percentText). Pour une nuit entière, charge le téléphone "
+                            + "avant de te coucher, jamais attaché sur toi.")
+        }
+        if let days = installation?.daysRemaining(), days < 0.6 {
+            warnings.append("L'installation de l'app expire dans moins de 15 heures. Réinstalle-la avec Sideloadly "
+                            + "avant de dormir, sinon l'enregistrement risque de s'arrêter.")
+        }
+        if let free = DeviceInfo.freeDiskMB, free < 2000 {
+            warnings.append("Il reste moins de 2 Go de stockage. Une nuit peut prendre jusqu'à 1 Go.")
+        }
+        if settings.wantsYeti && settings.pcCode.trimmingCharacters(in: .whitespaces).isEmpty {
+            warnings.append("Le code du PC n'est pas renseigné : le Blue Yeti ne démarrera pas. Recopie-le dans "
+                            + "Réglages (il s'affiche dans la fenêtre de 5_RECEVOIR_IPHONE.bat).")
+        }
+        if ProcessInfo.processInfo.isLowPowerModeEnabled {
+            warnings.append("Le mode économie d'énergie est activé : il peut perturber l'enregistrement.")
+        }
+        return warnings
+    }
+
+    /// Ouvre la feuille « Démarrer la nuit ? » (barre de 0 à 2 h).
+    func presentStartSheet(minutes: Int? = nil, source: String = "app") {
+        guard !recorder.isRecording, !recorder.isWaiting else { return }
+        startSheet = StartSheetRequest(minutes: NightDelay.clamp(Double(minutes ?? settings.lastDelayMinutes)),
+                                       source: source, warnings: nightWarnings())
+    }
+
+    /// « Oui » dans la feuille : la nuit démarre quand la feuille est fermée.
+    func queueStart(minutes: Int, source: String) {
+        queuedStart = (minutes, source)
+    }
+
+    func performQueuedStart() {
+        guard let queued = queuedStart else { return }
+        queuedStart = nil
+        startNight(minutes: queued.minutes, source: queued.source)
+    }
+
+    func startNight(minutes: Int, source: String) {
+        let chosen = NightDelay.clamp(Double(minutes))
+        settings.lastDelayMinutes = chosen
+        recorder.startNight(delayMinutes: chosen, source: source) { [weak self] error in
+            guard let self else { return }
+            if let error {
+                self.alert = AlertMessage(title: "Impossible de démarrer", message: error)
+                return
+            }
+            self.settings.lastNightStartUnix = Clock.unix
+            NightReminder.shared.removeDelivered()
+            self.updateReminders()
+        }
+    }
+
+    // MARK: - Rappel du soir
+
+    /// Reprogramme les notifications « Démarrer la nuit ? » des prochains soirs.
+    func updateReminders() {
+        var skipBefore: Date?
+        if settings.lastNightStartUnix > 0 {
+            skipBefore = Date(timeIntervalSince1970: settings.lastNightStartUnix + BedtimeReminder.quietSecondsAfterStart)
+        }
+        if recorder.isRecording || recorder.isWaiting {
+            let quiet = Date().addingTimeInterval(BedtimeReminder.quietSecondsAfterStart)
+            skipBefore = max(skipBefore ?? quiet, quiet)
+        }
+        NightReminder.shared.reschedule(enabled: settings.bedtimeReminder, minuteOfDay: settings.bedtimeMinutes,
+                                        defaultDelay: settings.lastDelayMinutes, skipBefore: skipBefore,
+                                        notAfter: installation?.expiration)
+    }
+
+    /// Réponse à la notification. Le micro ne peut s'allumer qu'app au premier plan : on attend d'y être.
+    private func handle(_ request: NightReminder.Request) {
+        if UIApplication.shared.applicationState == .active {
+            perform(request)
+        } else {
+            pendingReminder = request
+        }
+    }
+
+    /// À appeler quand l'app passe au premier plan (et à l'affichage du premier écran).
+    func runPendingReminder() {
+        guard UIApplication.shared.applicationState == .active, let request = pendingReminder else { return }
+        pendingReminder = nil
+        perform(request)
+    }
+
+    @objc private func didBecomeActive() {
+        refresh()
+        updateReminders()
+        runPendingReminder()
+    }
+
+    private func perform(_ request: NightReminder.Request) {
+        guard !recorder.isRecording, !recorder.isWaiting else {
+            alert = AlertMessage(title: "Nuit déjà en cours", message: "Une nuit est déjà en cours ou programmée.")
+            return
+        }
+        switch request {
+        case .choose(let minutes):
+            presentStartSheet(minutes: minutes, source: "notification")
+        case .start(let minutes):
+            // Avec un point à vérifier (batterie…), on montre d'abord la feuille plutôt que de démarrer.
+            if nightWarnings().isEmpty {
+                startNight(minutes: minutes, source: "notification")
+            } else {
+                presentStartSheet(minutes: minutes, source: "notification")
+            }
+        }
     }
 
     func delete(_ item: SessionItem) {

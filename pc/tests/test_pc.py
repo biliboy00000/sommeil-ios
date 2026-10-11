@@ -109,6 +109,35 @@ class TestsSeance(unittest.TestCase):
         self.assertEqual(len(r["apnees"]), 2)
         self.assertTrue(all(a["visible"] for a in r["apnees"]))
 
+    def test_debut_differe_et_calibration_automatique(self):
+        dossier = os.path.join(self.tmp, "differe")
+        shutil.copytree(self.dossier, dossier)
+        chemin = os.path.join(dossier, "session.json")
+        with open(chemin, encoding="utf-8") as f:
+            info = json.load(f)
+        info["kind"] = "nuit"
+        info["delayedStart"] = {"requestedUnix": info["startUnix"] - 45 * 60, "delayMinutes": 45, "source": "notification"}
+        info["calibrationMode"] = "automatique"
+        # Meilleure tranche gardée : à plat mais écran vers le matelas (pas « sur le dos »).
+        info["calibration"]["gravity"] = [0.0, 0.1, 0.995]
+        with open(chemin, "w", encoding="utf-8") as f:
+            json.dump(info, f)
+        rapport = verifier_seance.verifier(dossier)
+        texte = rapport.texte()
+        self.assertIn("Début différé", texte)
+        self.assertIn("45 min plus tard", texte)
+        self.assertIn("Calibration automatique", texte)
+        self.assertIn("aucun moment calme sur le dos trouvé", texte)
+        self.assertEqual(rapport.resultats["debut_differe"]["delayMinutes"], 45)
+        self.assertFalse(rapport.resultats["calibration"]["sur_le_dos"])
+        # Repli sur l'orientation du téléphone : le début de la séance simulée (sur le dos) est bien « dos ».
+        self.assertEqual(rapport.resultats["tenue"][0]["position"], "dos")
+
+    def test_calibration_guidee_affichee(self):
+        texte = verifier_seance.verifier(self.dossier).texte()
+        self.assertIn("Calibration guidée", texte)
+        self.assertNotIn("Début différé", texte)
+
     def test_son(self):
         try:
             import av  # noqa: F401

@@ -12,6 +12,9 @@ import SleepCore
 /// - 16 kHz suffit pour les ronflements et la respiration (comme le Yeti de la v1).
 /// - Fichiers d'une minute : en cas d'arrêt brutal, on perd au plus la minute en cours.
 /// Si l'iPhone refuse l'ALAC, on passe en PCM 16 bits (sans compression), noté dans le journal.
+///
+/// Début différé : le micro peut tourner sans rien écrire (l'app reste ainsi active écran verrouillé),
+/// puis `beginWriting` lance l'écriture sans redémarrer le micro.
 final class AudioCapture {
     static let sampleRate = 16_000.0
     static let segmentSeconds = 60.0
@@ -20,13 +23,14 @@ final class AudioCapture {
     typealias EventHandler = (String, String, [String: Double]?, [String: String]?) -> Void
 
     private var engine = AVAudioEngine()
-    private let directory: URL
-    private let index: JSONLinesWriter
     private let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: AudioCapture.sampleRate,
                                              channels: 1, interleaved: false)!
     private let lock = NSLock()
 
     // Protégés par `lock` (utilisés depuis le fil du micro).
+    /// Dossier audio de la séance ; nil tant que rien ne doit être écrit (attente d'un début différé).
+    private var directory: URL?
+    private var index: JSONLinesWriter?
     private var converter: AVAudioConverter?
     private var file: AVAudioFile?
     private var fileName: String?
@@ -53,10 +57,30 @@ final class AudioCapture {
     /// Niveau sonore (dBFS) environ deux fois par seconde.
     var onLevel: ((Double) -> Void)?
 
-    init(sessionDirectory: URL) throws {
-        directory = sessionDirectory.appendingPathComponent(SessionFiles.audioDir, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        index = try JSONLinesWriter(url: sessionDirectory.appendingPathComponent(SessionFiles.audioIndex))
+    /// Micro sans écriture : appeler `beginWriting` pour commencer à enregistrer.
+    init() {}
+
+    convenience init(sessionDirectory: URL) throws {
+        self.init()
+        try beginWriting(sessionDirectory: sessionDirectory)
+    }
+
+    /// Commence à écrire le son dans la séance (le micro peut déjà tourner).
+    func beginWriting(sessionDirectory: URL) throws {
+        let audioDirectory = sessionDirectory.appendingPathComponent(SessionFiles.audioDir, isDirectory: true)
+        try FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true)
+        let writer = try JSONLinesWriter(url: sessionDirectory.appendingPathComponent(SessionFiles.audioIndex))
+        lock.lock()
+        directory = audioDirectory
+        index = writer
+        expectedSampleTime = nil
+        firstBufferLogged = false
+        lock.unlock()
+    }
+
+    var isWriting: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return directory != nil
     }
 
     var isRunning: Bool {
@@ -86,7 +110,12 @@ final class AudioCapture {
         endBackgroundTask()
         stopEngine()
         removeObservers()
-        index.close()
+        lock.lock()
+        let currentIndex = index
+        index = nil
+        directory = nil
+        lock.unlock()
+        currentIndex?.close()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -162,6 +191,8 @@ final class AudioCapture {
         lock.lock()
         defer { lock.unlock() }
         guard running, let converter else { return }
+        // Attente d'un début différé : le micro tourne (l'app reste active) mais rien n'est gardé.
+        guard directory != nil else { return }
 
         let hostSeconds = when.isHostTimeValid ? AVAudioTime.seconds(forHostTime: when.hostTime) : Clock.uptime
         if !firstBufferLogged {
@@ -237,6 +268,7 @@ final class AudioCapture {
     /// À appeler avec `lock` tenu.
     private func openSegment(startUptime: Double) {
         closeSegment()
+        guard let directory, let index else { return }
         let name = String(format: "a_%05d.caf", segmentCounter)
         segmentCounter += 1
         let url = directory.appendingPathComponent(name)
@@ -287,8 +319,8 @@ final class AudioCapture {
             return
         }
         file = nil
-        index.write(AudioSegmentInfo(file: name, startUptime: fileStartUptime, startUnix: fileStartUnix,
-                                     frames: Int(fileFrames), sampleRate: Self.sampleRate, complete: true))
+        index?.write(AudioSegmentInfo(file: name, startUptime: fileStartUptime, startUnix: fileStartUnix,
+                                      frames: Int(fileFrames), sampleRate: Self.sampleRate, complete: true))
         fileName = nil
         fileFrames = 0
     }

@@ -96,3 +96,12 @@ Identifiant, type (`nuit`, `test_guide`), appareil, version d'iOS et de l'app, d
 (uptime et unix), `endedNormally` (faux si l'app a été arrêtée par iOS), flux enregistrés, format
 audio, calibration (`gravity` : vecteur gravité moyen sur le dos, normalisé ; `movement` : agitation
 en g), date d'expiration de l'installation, test de l'API haute fréquence d'Apple.
+
+- `calibrationMode` : `guidee` (30 s sur le dos au début, avec la voix) ou `automatique` (nuit au
+  début différé : l'app examine des tranches de 30 s et retient la première calme, à plat et écran vers
+  le haut ; en attendant, ou si aucune ne convient, elle garde la meilleure tranche vue).
+- `delayedStart` (seulement si un délai a été choisi) : `{requestedUnix, delayMinutes, source}`.
+  `requestedUnix` est l'heure du « Oui », `source` vaut `notification` ou `app`. Pendant l'attente,
+  le micro tourne pour garder l'app active mais rien n'est écrit : la séance commence à `startUnix`.
+  Le journal le reprend dans `session_debut` (`info.debut_differe`, `values.attente_min`,
+  `values.demande_unix`).

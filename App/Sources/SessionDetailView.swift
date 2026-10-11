@@ -63,6 +63,9 @@ struct SessionDetailView: View {
                     .foregroundStyle(summary.endedNormally ? .green : .orange)
             }
             InfoRow(label: "Début", value: TimeText.hourMinute(summary.startUnix))
+            if let delayed = item.info?.delayedStart {
+                InfoRow(label: "Début différé", value: "de \(delayed.delayMinutes) min (« Oui » à \(TimeText.hourMinute(delayed.requestedUnix)))")
+            }
             InfoRow(label: "Fin", value: TimeText.hourMinute(summary.endUnix))
             InfoRow(label: "Durée", value: TimeText.duration(summary.duration))
             VStack(alignment: .leading, spacing: 4) {
@@ -107,10 +110,19 @@ struct SessionDetailView: View {
                 InfoRow(label: "Consommation", value: String(format: "%.1f %% par heure", drain * 100))
             }
             if let calibration = item.info?.calibration {
-                InfoRow(label: "Calibration", value: calibration.movement < 0.02 ? "réussie" : "tu as bougé",
-                        valueColor: calibration.movement < 0.02 ? .primary : .orange)
+                InfoRow(label: "Calibration", value: Self.calibrationText(calibration, mode: item.info?.calibrationMode),
+                        valueColor: calibration.isPlausible ? .primary : .orange)
             }
         }
+    }
+
+    static func calibrationText(_ calibration: Calibration, mode: String?) -> String {
+        let automatic = mode == "automatique"
+        if calibration.isPlausible { return automatic ? "automatique, réussie" : "réussie" }
+        if calibration.tiltDegrees > Calibration.maxPlausibleTilt {
+            return automatic ? "automatique : aucun moment calme sur le dos" : "téléphone incliné (pas sur le dos ?)"
+        }
+        return automatic ? "automatique : tu bougeais" : "tu as bougé"
     }
 
     private var sendSection: some View {

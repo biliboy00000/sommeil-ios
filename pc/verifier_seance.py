@@ -273,6 +273,44 @@ def temps_txt(s):
     return "%d:%02d:%02d" % (s // 3600, s // 60 % 60, s % 60) if s >= 3600 else "%d:%02d" % (s // 60, s % 60)
 
 
+def inclinaison_deg(g):
+    """Inclinaison du téléphone par rapport à « à plat » (comme Calibration.tiltDegrees dans l'app)."""
+    return float(np.degrees(np.arccos(min(1.0, abs(g[2]) / max(np.linalg.norm(g), 1e-9)))))
+
+
+def calibration_sur_le_dos(info):
+    """La calibration correspond-elle bien à « sur le dos » ? (sinon on se repère à l'orientation du téléphone)"""
+    calib = info.get("calibration") or {}
+    g = calib.get("gravity")
+    if not g:
+        return False
+    if inclinaison_deg(g) > 35:
+        return False
+    # Calibration automatique : écran vers le haut exigé (téléphone posé dos contre la peau).
+    if info.get("calibrationMode") == "automatique" and g[2] >= 0:
+        return False
+    return True
+
+
+def ligne_calibration(r, info, est_test):
+    calib = info.get("calibration")
+    auto = info.get("calibrationMode") == "automatique"
+    if not calib or not calib.get("gravity"):
+        if not est_test:
+            r("Calibration : aucune%s" % (" (automatique : pas assez de mesures)" if auto else ""))
+        return
+    heure = datetime.datetime.fromtimestamp(float(calib.get("startUnix", 0))).strftime("%H:%M")
+    calme = calib.get("movement", 1) < 0.02
+    if auto and not calibration_sur_le_dos(info):
+        etat = "aucun moment calme sur le dos trouvé, meilleure tranche gardée"
+    else:
+        etat = ("calme" if calme else "tu bougeais") + (", sur le dos" if calibration_sur_le_dos(info) else "")
+    r("Calibration %s : %s, inclinaison %.0f°, %s" % ("automatique" if auto else "guidée", heure,
+                                                     inclinaison_deg(calib["gravity"]), etat))
+    r.resultats["calibration"] = {"mode": "automatique" if auto else "guidee", "sur_le_dos": calibration_sur_le_dos(info),
+                                  "calme": calme, "inclinaison_deg": inclinaison_deg(calib["gravity"])}
+
+
 def verifier(dossier):
     r = Rapport()
     s = Seance(dossier)
@@ -284,6 +322,14 @@ def verifier(dossier):
     if s.resume:
         r("Durée : %s · fin %s" % (temps_txt(s.resume["duration"]),
                                   "normale" if s.resume["endedNormally"] else "NON PRÉVUE (app arrêtée par iOS ?)"))
+    differe = info.get("delayedStart")
+    if differe:
+        demande = datetime.datetime.fromtimestamp(float(differe.get("requestedUnix", 0))).strftime("%H:%M")
+        r("Début différé : « Oui » touché à %s (%s), enregistrement commencé %d min plus tard"
+          % (demande, "depuis la notification" if differe.get("source") == "notification" else "dans l'app",
+             int(differe.get("delayMinutes", 0))))
+        r.resultats["debut_differe"] = differe
+    ligne_calibration(r, info, est_test)
     if "verite_simulation.json" in os.listdir(s.dossier):
         r("(séance SIMULÉE : les valeurs vraies sont connues)")
 
@@ -495,10 +541,15 @@ def verifier(dossier):
         duree_bloc = 600 if t_rel[-1] > 3600 else 60
         r.titre("Tenue du téléphone (battements nets au fil de la séance, blocs de %d min)" % (duree_bloc // 60))
         calib = (info.get("calibration") or {}).get("gravity")
-        if calib:
-            inclinaison = float(np.degrees(np.arccos(min(1.0, abs(calib[2]) / max(np.linalg.norm(calib), 1e-9)))))
-            if inclinaison > 35:
-                r("Calibration faite avec le téléphone incliné de %.0f° : tu n'étais sans doute pas sur le dos." % inclinaison)
+        if calib and not calibration_sur_le_dos(info):
+            if info.get("calibrationMode") == "automatique":
+                r("Calibration automatique : aucun moment calme sur le dos trouvé pendant la nuit.")
+                r("Les positions ci-dessous sont déduites de l'orientation du téléphone (à plat, écran vers le haut "
+                  "= sur le dos).")
+                calib = [0.0, 0.0, -1.0]
+            else:
+                r("Calibration faite avec le téléphone incliné de %.0f° : tu n'étais sans doute pas sur le dos."
+                  % inclinaison_deg(calib))
                 r("Les positions ci-dessous sont déduites de l'orientation du téléphone (à plat = sur le dos).")
                 calib = [0.0, 0.0, float(np.sign(calib[2]) or -1.0)]
         blocs = tenue_telephone(t_rel, col, calib, duree_bloc)

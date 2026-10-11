@@ -21,11 +21,20 @@ final class AppSettings: ObservableObject {
     @Published var pcCode: String { didSet { defaults.set(pcCode, forKey: "pcCode") } }
     /// Démarrer et arrêter le Blue Yeti du PC avec chaque enregistrement.
     @Published var controlYeti: Bool { didSet { defaults.set(controlYeti, forKey: "controlYeti") } }
+    /// Notification du soir « Démarrer la nuit ? ».
+    @Published var bedtimeReminder: Bool { didSet { defaults.set(bedtimeReminder, forKey: "bedtimeReminder") } }
+    /// Heure de cette notification, en minutes depuis minuit.
+    @Published var bedtimeMinutes: Int { didSet { defaults.set(bedtimeMinutes, forKey: "bedtimeMinutes") } }
+    /// Dernier délai choisi sur la barre (proposé la fois suivante).
+    @Published var lastDelayMinutes: Int { didSet { defaults.set(lastDelayMinutes, forKey: "lastDelayMinutes") } }
+    /// Heure (unix) du dernier « Oui » : pas de rappel dans les 12 h qui suivent.
+    var lastNightStartUnix: Double { didSet { defaults.set(lastNightStartUnix, forKey: "lastNightStartUnix") } }
 
     init() {
         defaults.register(defaults: ["pcAddress": "", "rawSensors": true, "voicePrompts": true,
                                      "autoUpload": true, "wakeMinutes": 7 * 60 + 30, "pcCode": "",
-                                     "controlYeti": true])
+                                     "controlYeti": true, "bedtimeReminder": false, "bedtimeMinutes": 23 * 60,
+                                     "lastDelayMinutes": 0, "lastNightStartUnix": 0.0])
         pcAddress = defaults.string(forKey: "pcAddress") ?? ""
         rawSensors = defaults.bool(forKey: "rawSensors")
         voicePrompts = defaults.bool(forKey: "voicePrompts")
@@ -33,6 +42,10 @@ final class AppSettings: ObservableObject {
         wakeMinutes = defaults.integer(forKey: "wakeMinutes")
         pcCode = defaults.string(forKey: "pcCode") ?? ""
         controlYeti = defaults.bool(forKey: "controlYeti")
+        bedtimeReminder = defaults.bool(forKey: "bedtimeReminder")
+        bedtimeMinutes = defaults.integer(forKey: "bedtimeMinutes")
+        lastDelayMinutes = defaults.integer(forKey: "lastDelayMinutes")
+        lastNightStartUnix = defaults.double(forKey: "lastNightStartUnix")
     }
 
     /// Le Blue Yeti doit-il être commandé ? (option activée et adresse du PC connue)
@@ -45,6 +58,17 @@ final class AppSettings: ObservableObject {
         set {
             let c = Calendar.current.dateComponents([.hour, .minute], from: newValue)
             wakeMinutes = (c.hour ?? 7) * 60 + (c.minute ?? 30)
+        }
+    }
+
+    var bedtimeDate: Date {
+        get {
+            Calendar.current.date(bySettingHour: bedtimeMinutes / 60, minute: bedtimeMinutes % 60, second: 0, of: Date())
+                ?? Date()
+        }
+        set {
+            let c = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+            bedtimeMinutes = (c.hour ?? 23) * 60 + (c.minute ?? 0)
         }
     }
 

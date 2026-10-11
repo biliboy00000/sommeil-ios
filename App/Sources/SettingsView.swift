@@ -8,6 +8,8 @@ struct SettingsView: View {
 
     @State private var testResult: String?
     @State private var testing = false
+    @State private var notificationsDenied = false
+    @State private var reminderTestSent = false
 
     var body: some View {
         Form {
@@ -56,6 +58,34 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle("Me proposer de démarrer la nuit", isOn: $settings.bedtimeReminder)
+                if settings.bedtimeReminder {
+                    DatePicker("Heure du rappel", selection: Binding(get: { settings.bedtimeDate },
+                                                                    set: { settings.bedtimeDate = $0 }),
+                               displayedComponents: .hourAndMinute)
+                    Button(reminderTestSent ? "Notification envoyée : verrouille l'écran (5 s)" : "Essayer la notification") {
+                        NightReminder.shared.sendTest(defaultDelay: settings.lastDelayMinutes)
+                        reminderTestSent = true
+                    }
+                    .disabled(notificationsDenied)
+                }
+                if notificationsDenied {
+                    Text("Les notifications de Sommeil sont refusées : Réglages de l'iPhone › Notifications › "
+                         + "Sommeil › Autoriser les notifications.")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            } header: {
+                Text("Rappel du soir")
+            } footer: {
+                Text("Chaque soir à cette heure, une notification « Démarrer la nuit ? ». Appuie longuement dessus : "
+                     + "une barre permet de choisir quand l'enregistrement commence (tout de suite ou jusqu'à 2 h plus "
+                     + "tard), puis « Oui » ou « Non ». « Oui » ouvre l'app un instant : iOS l'exige pour allumer le "
+                     + "micro. Pas de rappel le soir où une nuit est déjà lancée. Si tu utilises le mode de "
+                     + "concentration Sommeil, ajoute l'app Sommeil à ses apps autorisées.")
+            }
+
+            Section {
                 DatePicker("Heure du réveil", selection: Binding(get: { settings.wakeDate },
                                                                  set: { settings.wakeDate = $0 }),
                            displayedComponents: .hourAndMinute)
@@ -88,5 +118,18 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Réglages")
+        .onAppear {
+            NightReminder.shared.isDenied { notificationsDenied = $0 }
+        }
+        .onChange(of: settings.bedtimeReminder) { _, enabled in
+            guard enabled else { return model.updateReminders() }
+            NightReminder.shared.requestAuthorization { granted in
+                notificationsDenied = !granted
+                model.updateReminders()
+            }
+        }
+        .onChange(of: settings.bedtimeMinutes) { _, _ in
+            model.updateReminders()
+        }
     }
 }
