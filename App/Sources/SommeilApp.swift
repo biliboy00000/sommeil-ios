@@ -9,11 +9,11 @@ struct SommeilApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HomeView()
+            RootView()
                 .environmentObject(model)
                 .environmentObject(model.recorder)
+                .environmentObject(model.recorder.heart)
                 .environmentObject(model.settings)
-                .environmentObject(model.uploader)
         }
     }
 }

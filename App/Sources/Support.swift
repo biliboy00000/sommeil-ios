@@ -7,49 +7,38 @@ import SleepCore
 final class AppSettings: ObservableObject {
     private let defaults = UserDefaults.standard
 
-    /// Adresse du récepteur sur le PC, par exemple « 192.168.1.23:8010 ».
-    @Published var pcAddress: String { didSet { defaults.set(pcAddress, forKey: "pcAddress") } }
     /// Enregistrer aussi l'accéléromètre et le gyroscope bruts.
     @Published var rawSensors: Bool { didSet { defaults.set(rawSensors, forKey: "rawSensors") } }
     /// Consignes dites à voix haute.
     @Published var voicePrompts: Bool { didSet { defaults.set(voicePrompts, forKey: "voicePrompts") } }
-    /// Envoyer au PC dès l'arrêt de l'enregistrement.
-    @Published var autoUpload: Bool { didSet { defaults.set(autoUpload, forKey: "autoUpload") } }
     /// Heure du réveil, en minutes depuis minuit.
     @Published var wakeMinutes: Int { didSet { defaults.set(wakeMinutes, forKey: "wakeMinutes") } }
-    /// Code affiché par le récepteur du PC (protège la commande du micro).
-    @Published var pcCode: String { didSet { defaults.set(pcCode, forKey: "pcCode") } }
-    /// Démarrer et arrêter le Blue Yeti du PC avec chaque enregistrement.
-    @Published var controlYeti: Bool { didSet { defaults.set(controlYeti, forKey: "controlYeti") } }
     /// Notification du soir « Démarrer la nuit ? ».
     @Published var bedtimeReminder: Bool { didSet { defaults.set(bedtimeReminder, forKey: "bedtimeReminder") } }
     /// Heure de cette notification, en minutes depuis minuit.
     @Published var bedtimeMinutes: Int { didSet { defaults.set(bedtimeMinutes, forKey: "bedtimeMinutes") } }
     /// Dernier délai choisi sur la barre (proposé la fois suivante).
     @Published var lastDelayMinutes: Int { didSet { defaults.set(lastDelayMinutes, forKey: "lastDelayMinutes") } }
+    /// Écran « Cœur » : tracé des vibrations ("signal") ou des battements ("pouls").
+    @Published var heartTrace: String { didSet { defaults.set(heartTrace, forKey: "heartTrace") } }
     /// Heure (unix) du dernier « Oui » : pas de rappel dans les 12 h qui suivent.
     var lastNightStartUnix: Double { didSet { defaults.set(lastNightStartUnix, forKey: "lastNightStartUnix") } }
 
     init() {
-        defaults.register(defaults: ["pcAddress": "", "rawSensors": true, "voicePrompts": true,
-                                     "autoUpload": true, "wakeMinutes": 7 * 60 + 30, "pcCode": "",
-                                     "controlYeti": true, "bedtimeReminder": false, "bedtimeMinutes": 23 * 60,
-                                     "lastDelayMinutes": 0, "lastNightStartUnix": 0.0])
-        pcAddress = defaults.string(forKey: "pcAddress") ?? ""
+        defaults.register(defaults: ["rawSensors": true, "voicePrompts": true, "wakeMinutes": 7 * 60 + 30,
+                                     "bedtimeReminder": false, "bedtimeMinutes": 23 * 60,
+                                     "lastDelayMinutes": 0, "lastNightStartUnix": 0.0, "heartTrace": "signal"])
+        // Réglages de la v1 (PC, Blue Yeti) : plus utilisés.
+        for key in ["pcAddress", "pcCode", "controlYeti", "autoUpload"] { defaults.removeObject(forKey: key) }
         rawSensors = defaults.bool(forKey: "rawSensors")
         voicePrompts = defaults.bool(forKey: "voicePrompts")
-        autoUpload = defaults.bool(forKey: "autoUpload")
         wakeMinutes = defaults.integer(forKey: "wakeMinutes")
-        pcCode = defaults.string(forKey: "pcCode") ?? ""
-        controlYeti = defaults.bool(forKey: "controlYeti")
         bedtimeReminder = defaults.bool(forKey: "bedtimeReminder")
         bedtimeMinutes = defaults.integer(forKey: "bedtimeMinutes")
         lastDelayMinutes = defaults.integer(forKey: "lastDelayMinutes")
+        heartTrace = defaults.string(forKey: "heartTrace") ?? "signal"
         lastNightStartUnix = defaults.double(forKey: "lastNightStartUnix")
     }
-
-    /// Le Blue Yeti doit-il être commandé ? (option activée et adresse du PC connue)
-    var wantsYeti: Bool { controlYeti && !pcAddress.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var wakeDate: Date {
         get {

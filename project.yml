@@ -10,7 +10,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 
@@ -54,14 +54,11 @@ targets:
         UIBackgroundModes:
           - audio
         NSMicrophoneUsageDescription: >-
-          Le micro enregistre les bruits de la nuit (ronflements, respiration). Le son reste sur ton iPhone
-          et sur ton PC. Il permet aussi à l'app de continuer à enregistrer écran verrouillé.
+          Le micro enregistre les bruits de la nuit (respiration, ronflements). Le son reste sur ton iPhone.
+          Il permet aussi à l'app de continuer à enregistrer écran verrouillé.
         NSMotionUsageDescription: >-
-          Les capteurs de mouvement mesurent les battements du cœur, la respiration, la position et les mouvements.
-        NSLocalNetworkUsageDescription: >-
-          Pour envoyer tes nuits au PC, sur le Wi-Fi de la maison.
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
+          Les capteurs de mouvement mesurent les battements du cœur (aussi en direct), la respiration,
+          la position et les mouvements.
         # Les séances apparaissent dans l'app Fichiers (« Sur mon iPhone › Sommeil »).
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

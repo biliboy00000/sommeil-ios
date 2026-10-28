@@ -1,6 +1,6 @@
 import Foundation
 
-/// Lit le profil d'installation (« embedded.mobileprovision ») ajouté par Sideloadly,
+/// Lit le profil d'installation (« embedded.mobileprovision ») ajouté par SideStore (ou Sideloadly),
 /// pour savoir quand l'app cessera de s'ouvrir.
 public struct ProvisioningInfo: Equatable, Sendable {
     public var expiration: Date?

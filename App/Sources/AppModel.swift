@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import UIKit
 import SleepCore
 
@@ -7,7 +8,6 @@ struct SessionItem: Identifiable, Equatable {
     let url: URL
     let info: SessionInfo?
     let summary: SessionSummary?
-    let uploaded: Bool
 
     var id: String { url.lastPathComponent }
 
@@ -21,6 +21,9 @@ struct SessionItem: Identifiable, Equatable {
         return text.prefix(1).uppercased() + text.dropFirst()
     }
 
+    var startDate: Date? { info.map { Date(timeIntervalSince1970: $0.startUnix) } }
+    var isNight: Bool { info?.kind == "nuit" }
+
     var kindLabel: String {
         switch info?.kind {
         case "nuit": return "Nuit"
@@ -32,7 +35,6 @@ struct SessionItem: Identifiable, Equatable {
 
 /// Lecture des séances sur le disque, export en .zip, suppression.
 enum SessionStore {
-    static let uploadedMarker = ".envoye.json"
 
     static func list() -> [SessionItem] {
         let root = Recorder.sessionsRoot
@@ -44,9 +46,7 @@ enum SessionStore {
             guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
                 return nil
             }
-            return SessionItem(url: url, info: try? SessionInfo.read(from: url),
-                               summary: SessionSummary.read(from: url),
-                               uploaded: manager.fileExists(atPath: url.appendingPathComponent(uploadedMarker).path))
+            return SessionItem(url: url, info: try? SessionInfo.read(from: url), summary: SessionSummary.read(from: url))
         }
     }
 
@@ -161,12 +161,17 @@ struct StartSheetRequest: Identifiable {
     var warnings: [String]
 }
 
+/// Onglets de l'app.
+enum AppTab: Hashable {
+    case tonight, heart, nights, settings
+}
+
 /// État général de l'app, partagé entre les écrans.
 final class AppModel: ObservableObject {
     let settings: AppSettings
     let recorder: Recorder
-    let uploader: Uploader
 
+    @Published var tab: AppTab = .tonight
     @Published private(set) var sessions: [SessionItem] = []
     @Published private(set) var installation: ProvisioningInfo?
     @Published private(set) var drainPerHour: Double?
@@ -183,14 +188,13 @@ final class AppModel: ObservableObject {
     init() {
         settings = AppSettings()
         recorder = Recorder()
-        uploader = Uploader()
         recorder.settings = settings
         installation = DeviceInfo.installation
-        recorder.onFinished = { [weak self] directory in
+        recorder.onFinished = { [weak self] _ in
             guard let self else { return }
-            self.refresh()
-            if self.settings.autoUpload, !self.settings.pcAddress.isEmpty {
-                self.uploader.upload(directory, address: self.settings.pcAddress) { [weak self] in self?.refresh() }
+            withAnimation(.snappy) {
+                self.refresh()
+                self.tab = .tonight
             }
         }
         recorder.onDelayedStartFailed = { [weak self] error in
@@ -228,7 +232,7 @@ final class AppModel: ObservableObject {
 
     // MARK: - Démarrer la nuit
 
-    /// Points à vérifier avant une nuit (batterie, installation, stockage, code du PC…).
+    /// Points à vérifier avant une nuit (batterie, installation, stockage…).
     func nightWarnings() -> [String] {
         refresh()
         var warnings: [String] = []
@@ -241,16 +245,13 @@ final class AppModel: ObservableObject {
             warnings.append("La batterie n'est qu'à \(level.percentText). Pour une nuit entière, charge le téléphone "
                             + "avant de te coucher, jamais attaché sur toi.")
         }
-        if let days = installation?.daysRemaining(), days < 0.6 {
-            warnings.append("L'installation de l'app expire dans moins de 15 heures. Réinstalle-la avec Sideloadly "
-                            + "avant de dormir, sinon l'enregistrement risque de s'arrêter.")
+        if let expiry = installation?.expiration, expiry < forecast.wake.addingTimeInterval(3600) {
+            warnings.append("L'installation de l'app expire avant ton réveil (\(expiry.formatted(date: .omitted, time: .shortened))). "
+                            + "Renouvelle-la maintenant : " + Texts.sideStoreRenewal)
         }
-        if let free = DeviceInfo.freeDiskMB, free < 2000 {
-            warnings.append("Il reste moins de 2 Go de stockage. Une nuit peut prendre jusqu'à 1 Go.")
-        }
-        if settings.wantsYeti && settings.pcCode.trimmingCharacters(in: .whitespaces).isEmpty {
-            warnings.append("Le code du PC n'est pas renseigné : le Blue Yeti ne démarrera pas. Recopie-le dans "
-                            + "Réglages (il s'affiche dans la fenêtre de 5_RECEVOIR_IPHONE.bat).")
+        if let free = DeviceInfo.freeDiskMB, free < 3000 {
+            warnings.append("Il reste moins de 3 Go de stockage. Une nuit peut prendre jusqu'à 1 Go : supprime "
+                            + "d'anciennes nuits dans l'onglet Nuits.")
         }
         if ProcessInfo.processInfo.isLowPowerModeEnabled {
             warnings.append("Le mode économie d'énergie est activé : il peut perturber l'enregistrement.")

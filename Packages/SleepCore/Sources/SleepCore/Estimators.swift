@@ -1,8 +1,8 @@
 import Foundation
 
-// Estimations rapides pour l'écran « test de placement ». Elles servent à comparer
-// des emplacements et des serrages, pas à mesurer la nuit : les vrais algorithmes
-// viendront en phase 2, sur le PC, à partir des données brutes.
+// Estimations rapides pour l'écran « Cœur » (qualité de chaque voie, pouls, respiration).
+// Elles servent aussi à comparer des emplacements et des serrages. L'analyse complète
+// de la nuit viendra ensuite, sur l'iPhone, à partir des données brutes.
 
 public struct HeartEstimate: Equatable, Sendable {
     /// Pouls estimé (battements par minute), nil si rien de régulier n'est trouvé.

@@ -1,7 +1,7 @@
 # Compilation automatique sur un Mac de GitHub, à chaque modification.
 # 1. Tests du cœur (SleepCore).
-# 2. Compilation de l'app pour iPhone, sans signature (Sideloadly signe ensuite avec ton identifiant Apple).
-# 3. Publication du fichier Sommeil.ipa dans « Releases » (lien fixe vers la dernière version).
+# 2. Compilation de l'app pour iPhone, sans signature (SideStore signe ensuite avec ton identifiant Apple).
+# 3. Publication de Sommeil.ipa et de la source SideStore (source.json) dans « Releases ».
 name: Compilation
 
 on:
@@ -30,12 +30,12 @@ jobs:
         run: swift test --package-path Packages/SleepCore
       - name: Simulateur de séance
         run: swift build -c release --package-path Packages/SleepCore --product SessionSimulator
-      - name: Tests du côté PC (Python, sur une séance simulée)
+      - name: Lecture du format en Python (scripts de référence, sur une séance simulée)
         run: |
           python3 -m venv .venv-tests
           .venv-tests/bin/pip install --quiet numpy scipy av soundfile soxr
           SIMULATEUR="$PWD/Packages/SleepCore/.build/release/SessionSimulator" \
-            .venv-tests/bin/python -m unittest discover -s pc/tests -v
+            .venv-tests/bin/python -m unittest discover -s reference/pc/tests -v
 
   app:
     name: App iPhone
@@ -52,7 +52,7 @@ jobs:
         run: |
           xcodebuild -project Sommeil.xcodeproj -scheme Sommeil -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            MARKETING_VERSION=0.2.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build > build.log 2>&1 || {
               echo "::group::Erreurs de compilation"
@@ -72,8 +72,8 @@ jobs:
           plutil -p Payload/Sommeil.app/PlugIns/SommeilNotification.appex/Info.plist | grep -E "CFBundleIdentifier|UNNotification|NSExtensionPrincipalClass"
           zip -qry Sommeil.ipa Payload
           ls -lh Sommeil.ipa
-      - name: Fabriquer le paquet d'installation complet
-        run: python3 kit/construire_kit.py Sommeil.ipa "0.1.${{ github.run_number }}" SuiviSommeil_installation.zip
+      - name: Fabriquer la source SideStore (mises à jour depuis l'iPhone)
+        run: python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.2.${{ github.run_number }}" source.json
       - name: Garder le journal de compilation
         if: always()
         uses: actions/upload-artifact@v4
@@ -87,18 +87,17 @@ jobs:
           name: Sommeil-ipa
           path: |
             Sommeil.ipa
-            SuiviSommeil_installation.zip
+            source.json
       - name: Publier la version (lien de téléchargement fixe)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.${{ github.run_number }}
-          name: Sommeil 0.1.${{ github.run_number }}
+          tag_name: v0.2.${{ github.run_number }}
+          name: Sommeil 0.2.${{ github.run_number }}
           make_latest: true
           files: |
             Sommeil.ipa
-            SuiviSommeil_installation.zip
+            source.json
           body: |
             Version compilée automatiquement depuis ${{ github.sha }}.
-            Pour une première installation, prends SuiviSommeil_installation.zip
-            (app + fichiers du PC + mode d'emploi). Pour mettre à jour l'app seule, Sommeil.ipa.
+            À installer avec SideStore, directement sur l'iPhone : mode d'emploi dans INSTALLATION.md.

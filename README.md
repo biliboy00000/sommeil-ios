@@ -1,35 +1,34 @@
-# Sommeil — enregistreur iPhone (v2 du projet SuiviSommeil)
+# Sommeil — suivi de nuit sur iPhone seul
 
-App iPhone qui enregistre toute la nuit, téléphone attaché sur le thorax :
-mouvements à 100 Hz (pour le pouls, la respiration, la position), son, état de l'iPhone.
-L'analyse se fait ensuite sur le PC.
+App iPhone qui enregistre toute la nuit, écran verrouillé : mouvements à 100 Hz (pouls, respiration,
+position), son, état de l'iPhone. Elle montre aussi l'activité du cœur **en direct**, téléphone posé
+sur la poitrine. Depuis la version 0.2, plus besoin du PC ni du Blue Yeti.
 
 **Ce n'est pas un appareil médical.**
 
 ## Où en est le projet
 
-- **Phase 1 (en cours)** : l'enregistreur seul. Test de placement, test guidé de 10 minutes,
-  enregistrement de nuit écran verrouillé, bilan du matin, envoi au PC.
-- Phase 2 : les algorithmes (pouls, variabilité, respiration, position, phases), sur de vraies données.
-- Phase 3 : validation sur une nuit complète.
+- **Fait (0.2)** : app autonome (PC et Blue Yeti retirés), nouvelle interface en onglets
+  (Ce soir, Cœur, Nuits, Réglages), écran « Cœur en direct », installation par SideStore.
+- **Ensuite** : analyse de la nuit sur l'iPhone (pouls, respiration, positions, mouvements, note de la nuit),
+  rapport du matin et historique.
+
+Le plan complet : fiche « Refonte de l'app Sommeil : iPhone seul ».
 
 ## Contenu
 
 - `App/` : l'app iPhone (SwiftUI).
-- `Packages/SleepCore/` : le cœur commun (format des fichiers, filtres, estimations rapides, bilan),
-  avec ses tests.
-- `pc/` : le récepteur Windows (`5_RECEVOIR_IPHONE.bat`) et la lecture des données en Python.
+- `Packages/SleepCore/` : le cœur commun (format des fichiers, filtres, battements en direct, bilan),
+  avec ses tests (simulations dont on connaît chaque battement).
 - `FORMAT.md` : description exacte des fichiers enregistrés.
+- `reference/` : les anciens programmes du PC (Python), gardés pour vérifier les calculs et le format.
+- `scripts/source_sidestore.py` : fabrique la source SideStore publiée avec chaque version.
 - `.github/workflows/compilation.yml` : compilation automatique sur un Mac de GitHub.
 
-## Installer l'app (sans Mac)
+## Installer l'app
 
-À chaque modification, GitHub compile l'app et publie `Sommeil.ipa` dans **Releases**.
-Lien direct vers la dernière version :
-https://github.com/biliboy00000/sommeil-ios/releases/latest/download/Sommeil.ipa
+Mode d'emploi pas à pas : [INSTALLATION.md](INSTALLATION.md) (SideStore ; le PC ne sert qu'une fois).
 
-Paquet complet pour une première installation (app + fichiers du PC + mode d'emploi pas à pas) :
-https://github.com/biliboy00000/sommeil-ios/releases/latest/download/SuiviSommeil_installation.zip
-
-On l'installe avec **Sideloadly** sur le PC et un identifiant Apple gratuit. L'installation est
-valable 7 jours ; l'app affiche sa date d'expiration et prévient avant une nuit si elle approche.
+À chaque modification, GitHub compile l'app et publie dans **Releases** :
+- `Sommeil.ipa` : https://github.com/biliboy00000/sommeil-ios/releases/latest/download/Sommeil.ipa
+- la source SideStore : https://github.com/biliboy00000/sommeil-ios/releases/latest/download/source.json

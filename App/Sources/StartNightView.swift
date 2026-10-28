@@ -18,18 +18,24 @@ struct StartNightSheet: View {
     var body: some View {
         let chosen = NightDelay.clamp(minutes)
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: 18) {
+                Image(systemName: chosen == 0 ? "moon.zzz.fill" : "timer")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.indigo)
+                    .contentTransition(.symbolEffect(.replace))
+                    .padding(.top, 24)
                 Text("Démarrer la nuit ?")
-                    .font(.title2.weight(.semibold))
-                    .padding(.top, 20)
+                    .font(.title2.weight(.bold))
                 VStack(spacing: 4) {
                     Text(Self.capitalized(NightDelay.text(chosen)))
-                        .font(.system(size: 40, weight: .semibold, design: .rounded))
+                        .font(.system(size: 42, weight: .semibold, design: .rounded))
                         .monospacedDigit()
-                    if chosen > 0 {
-                        Text("Début vers \(Date().addingTimeInterval(Double(chosen) * 60).formatted(date: .omitted, time: .shortened))")
-                            .foregroundStyle(.secondary)
-                    }
+                        .contentTransition(.numericText(value: Double(chosen)))
+                        .animation(.snappy, value: chosen)
+                    Text(chosen > 0 ? "Début vers \(clockText(Date().addingTimeInterval(Double(chosen) * 60)))"
+                                    : "Calibration de 30 secondes, puis bonne nuit")
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.opacity)
                 }
                 Slider(value: $minutes, in: 0...Double(NightDelay.maxMinutes), step: Double(NightDelay.stepMinutes)) {
                     Text("Délai avant le début de l'enregistrement")
@@ -38,6 +44,7 @@ struct StartNightSheet: View {
                 } maximumValueLabel: {
                     Text("2 h")
                 }
+                .tint(.indigo)
                 .sensoryFeedback(.selection, trigger: chosen)
                 Text(Self.explanation(chosen))
                     .font(.footnote)
@@ -48,22 +55,25 @@ struct StartNightSheet: View {
                         .font(.footnote)
                         .foregroundStyle(.orange)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 HStack(spacing: 12) {
                     Button {
                         dismiss()
                     } label: {
-                        Text("Non").frame(maxWidth: .infinity).padding(.vertical, 6)
+                        Text("Non").frame(maxWidth: .infinity).padding(.vertical, 8)
                     }
-                    .buttonStyle(.bordered)
+                    .secondaryButton()
                     Button {
                         model.queueStart(minutes: chosen, source: request.source)
                         dismiss()
                     } label: {
                         Text(chosen == 0 ? "Oui, maintenant" : "Oui, \(NightDelay.text(chosen))")
-                            .frame(maxWidth: .infinity).padding(.vertical, 6)
+                            .frame(maxWidth: .infinity).padding(.vertical, 8)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
+                    .tint(.indigo)
                 }
                 .font(.headline)
                 Text(Texts.charging)
@@ -87,9 +97,8 @@ struct StartNightSheet: View {
             return "L'enregistrement commence tout de suite : allonge-toi sur le dos et ne bouge plus pendant "
                 + "30 secondes (calibration). Ensuite, verrouille l'écran."
         }
-        return "Attache le téléphone et verrouille l'écran. L'app attend en silence (rien n'est enregistré), "
-            + "puis enregistre jusqu'à ce que tu touches « Arrêter ». Pas de voix : la calibration se fait toute "
-            + "seule, pendant un moment calme sur le dos. Si tu t'endors avant le début, ton endormissement "
-            + "ne sera pas mesuré."
+        return "Verrouille l'écran. L'app attend en silence (rien n'est enregistré), puis enregistre jusqu'à ce que "
+            + "tu l'arrêtes. Pas de voix : la calibration se fait toute seule, pendant un moment calme sur le dos. "
+            + "Si tu t'endors avant le début, ton endormissement ne sera pas mesuré."
     }
 }

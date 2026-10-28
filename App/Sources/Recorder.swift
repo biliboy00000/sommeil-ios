@@ -34,24 +34,28 @@ final class Recorder: ObservableObject {
         var guidedNext: String?
         var interruptions = 0
         var lastMessage: String?
-        /// État du Blue Yeti du PC (nil si non utilisé).
-        var yetiText: String?
-        var yetiOK = true
     }
 
     static let calibrationSeconds = 30.0
 
     @Published private(set) var isRecording = false
-    @Published private(set) var isPlacementRunning = false
+    /// Mesure en direct de l'écran « Cœur » (rien n'est enregistré).
+    @Published private(set) var isLiveRunning = false
     /// Nuit programmée : le micro tourne (l'app reste active) mais rien n'est enregistré avant `waitUntil`.
     @Published private(set) var isWaiting = false
     @Published private(set) var waitUntil: Date?
+    /// Durée totale de l'attente choisie (s), pour l'anneau du compte à rebours.
+    @Published private(set) var waitTotalSeconds = 0
+    /// Début de l'enregistrement en cours.
+    @Published private(set) var startDate: Date?
     @Published private(set) var kind: Kind = .night
     @Published private(set) var live = Live()
     @Published private(set) var sessionDirectory: URL?
 
     let sensorQueue = DispatchQueue(label: "sommeil.capteurs", qos: .userInitiated)
     let analyzer = LiveAnalyzer()
+    /// Battements en direct (écran « Cœur »).
+    private(set) lazy var heart = HeartMonitor(queue: sensorQueue)
     var settings = AppSettings()
     /// Appelé quand une séance se termine normalement.
     var onFinished: ((URL) -> Void)?
@@ -82,9 +86,6 @@ final class Recorder: ObservableObject {
     private var lastThermal = ""
     private var lowBatteryLogged = false
     private var stopping = false
-    private var yetiRequested = false
-    private var lastYetiPoll = 0.0
-    private var lastYetiSummary = ""
     private var waitTimer: DispatchSourceTimer?
     private var waitTicks = 0
     private var pendingDelayedStart: DelayedStart?
@@ -138,7 +139,7 @@ final class Recorder: ObservableObject {
     /// Démarre une nuit ou un test guidé. `completion` reçoit un message d'erreur, ou nil si tout va bien.
     func start(kind: Kind, completion: @escaping (String?) -> Void) {
         guard !isRecording, !isWaiting else { return completion("Un enregistrement est déjà en cours ou programmé.") }
-        if isPlacementRunning { stopPlacement() }
+        if isLiveRunning { stopLive() }
         AVAudioApplication.requestRecordPermission { [weak self] granted in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -159,7 +160,7 @@ final class Recorder: ObservableObject {
         guard !isRecording, !isWaiting else { return completion("Une nuit est déjà en cours ou programmée.") }
         let minutes = NightDelay.clamp(Double(delayMinutes))
         guard minutes > 0 else { return start(kind: .night, completion: completion) }
-        if isPlacementRunning { stopPlacement() }
+        if isLiveRunning { stopLive() }
         let request = DelayedStart(requestedUnix: Clock.unix, delayMinutes: minutes, source: source)
         AVAudioApplication.requestRecordPermission { [weak self] granted in
             DispatchQueue.main.async {
@@ -193,6 +194,7 @@ final class Recorder: ObservableObject {
         let due = Date(timeIntervalSince1970: request.requestedUnix + Double(request.delayMinutes) * 60)
         live = Live()
         waitUntil = due
+        waitTotalSeconds = request.delayMinutes * 60
         waitTicks = 0
         isWaiting = true
         UIApplication.shared.isIdleTimerDisabled = false
@@ -280,6 +282,7 @@ final class Recorder: ObservableObject {
 
         self.kind = kind
         sessionDirectory = directory
+        startDate = Date(timeIntervalSince1970: now.unix)
         startUptime = now.uptime
         calibrationStartUptime = now.uptime
         stopping = false
@@ -385,56 +388,7 @@ final class Recorder: ObservableObject {
         timer.resume()
         tickTimer = timer
         tick()
-        if settings.wantsYeti {
-            startYeti(sessionID: id)
-        }
         return nil
-    }
-
-    // MARK: - Blue Yeti du PC
-
-    private func startYeti(sessionID: String) {
-        yetiRequested = true
-        lastYetiPoll = live.elapsed
-        lastYetiSummary = ""
-        live.yetiText = "démarrage…"
-        let address = settings.pcAddress, code = settings.pcCode
-        Task { [weak self] in
-            let outcome = await PCLink.start(sessionID: sessionID, address: address, code: code)
-            await MainActor.run { self?.applyYeti(outcome) }
-        }
-    }
-
-    private func pollYeti() {
-        guard let sessionID = info?.id else { return }
-        lastYetiPoll = live.elapsed
-        let address = settings.pcAddress, code = settings.pcCode
-        Task { [weak self] in
-            var outcome = await PCLink.status(address: address, code: code)
-            // Le PC répond mais n'enregistre pas (récepteur relancé ?) : on redemande.
-            if case .state(let state) = outcome, state.enregistre != true {
-                outcome = await PCLink.start(sessionID: sessionID, address: address, code: code)
-            }
-            await MainActor.run { self?.applyYeti(outcome) }
-        }
-    }
-
-    private func applyYeti(_ outcome: PCLink.Outcome) {
-        guard isRecording else { return }
-        let description = PCLink.describe(outcome)
-        live.yetiText = description.text
-        live.yetiOK = description.ok
-        // On ne note dans le journal que les changements (pas chaque contrôle).
-        let summary: String
-        switch outcome {
-        case .failure(let message): summary = "échec:" + message
-        case .state(let state): summary = (state.enregistre == true ? "ok:" : "arrêt:") + (state.micro ?? "") + (state.erreur ?? "")
-        }
-        guard summary != lastYetiSummary else { return }
-        lastYetiSummary = summary
-        var values: [String: Double]?
-        if case .state(let state) = outcome, let seconds = state.secondes { values = ["secondes": seconds] }
-        log(EventType.yeti, "Blue Yeti du PC : \(description.text)", values: values)
     }
 
     // MARK: - Pendant l'enregistrement
@@ -505,10 +459,6 @@ final class Recorder: ObservableObject {
         if elapsed - lastStateSample >= 15 {
             lastStateSample = elapsed
             writeState(now: now)
-        }
-        // Contrôle du Blue Yeti toutes les 5 minutes.
-        if yetiRequested && elapsed - lastYetiPoll >= 300 {
-            pollYeti()
         }
     }
 
@@ -674,12 +624,6 @@ final class Recorder: ObservableObject {
         let now = Clock.now
         writeState(now: now)
         clockLog?.write(ClockPoint(uptime: now.uptime, unix: now.unix, continuous: Clock.continuous))
-        if yetiRequested, let sessionID = info?.id {
-            yetiRequested = false
-            log(EventType.yeti, "Blue Yeti du PC : demande d'arrêt envoyée")
-            let address = settings.pcAddress, code = settings.pcCode
-            Task { _ = await PCLink.stop(sessionID: sessionID, address: address, code: code) }
-        }
         log(EventType.sessionEnd, "Fin de l'enregistrement (bouton Arrêter ou fin du test)")
         info?.endUnix = now.unix
         info?.endUptime = now.uptime
@@ -694,6 +638,7 @@ final class Recorder: ObservableObject {
         isRecording = false
         info = nil
         sessionDirectory = nil
+        startDate = nil
         onFinished?(directory)
     }
 
@@ -716,29 +661,38 @@ final class Recorder: ObservableObject {
         }
     }
 
-    // MARK: - Test de placement (rien n'est enregistré)
+    // MARK: - Mesure en direct (écran « Cœur » ; rien n'est enregistré)
 
-    func startPlacement() {
-        guard !isRecording, !isPlacementRunning else { return }
+    /// Démarre les capteurs pour l'écran « Cœur » : battements en direct, qualité des voies, respiration.
+    func startLive() {
+        guard !isRecording, !isWaiting, !isLiveRunning else { return }
         motion.onEvent = nil
         motion.onGap = nil
         let analyzer = self.analyzer
-        motion.onDeviceMotion = { motion in analyzer.add(motion) }
+        let heart = self.heart
+        heart.reset()
+        analyzer.onEstimate = { [weak heart] estimate in heart?.update(with: estimate) }
+        motion.onDeviceMotion = { motion in
+            analyzer.add(motion)
+            heart.add(motion)
+        }
         motion.start(directory: nil, raw: false)
         analyzer.start(sensorQueue: sensorQueue)
         UIApplication.shared.isIdleTimerDisabled = true
-        isPlacementRunning = true
-        Diagnostics.shared.log("Test de placement démarré")
+        isLiveRunning = true
+        Diagnostics.shared.log("Mesure du cœur en direct démarrée")
     }
 
-    func stopPlacement() {
-        guard isPlacementRunning else { return }
+    func stopLive() {
+        guard isLiveRunning else { return }
         analyzer.stop()
+        analyzer.onEstimate = nil
         motion.stop()
         motion.onDeviceMotion = nil
         UIApplication.shared.isIdleTimerDisabled = false
-        isPlacementRunning = false
-        Diagnostics.shared.log("Test de placement arrêté")
+        isLiveRunning = false
+        heart.logSummary()
+        Diagnostics.shared.log("Mesure du cœur en direct arrêtée")
     }
 
     // MARK: - Vie de l'app
