@@ -115,8 +115,8 @@ struct SettingsView: View {
         } header: {
             Text("Installation")
         } footer: {
-            Text("Mises à jour : télécharge le dernier Sommeil.ipa dans Safari (lien dans le mode d'emploi), puis "
-                 + "ouvre-le dans SideStore. Tes nuits sont gardées.")
+            Text("Mises à jour : SideStore les propose si tu as ajouté la source de Sommeil (onglet Sources). "
+                 + "Sinon, télécharge le dernier Sommeil.ipa dans Safari et ouvre-le dans SideStore. Tes nuits sont gardées.")
         }
     }
 

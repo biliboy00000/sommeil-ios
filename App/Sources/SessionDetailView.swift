@@ -6,19 +6,25 @@ struct NightsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var pendingDelete: SessionItem?
 
-    private var groups: [(month: String, items: [SessionItem])] {
-        var result: [(String, [SessionItem])] = []
+    struct MonthGroup: Identifiable {
+        let month: String
+        var items: [SessionItem]
+        var id: String { month }
+    }
+
+    private var groups: [MonthGroup] {
+        var result: [MonthGroup] = []
         for item in model.sessions {
             let date = item.startDate ?? .distantPast
             let month = date.formatted(.dateTime.month(.wide).year().locale(Locale(identifier: "fr_FR")))
             let label = month.prefix(1).uppercased() + month.dropFirst()
-            if let index = result.firstIndex(where: { $0.0 == label }) {
-                result[index].1.append(item)
+            if let index = result.firstIndex(where: { $0.month == label }) {
+                result[index].items.append(item)
             } else {
-                result.append((label, [item]))
+                result.append(MonthGroup(month: label, items: [item]))
             }
         }
-        return result.map { (month: $0.0, items: $0.1) }
+        return result
     }
 
     var body: some View {
@@ -29,7 +35,7 @@ struct NightsView: View {
                                            description: Text("Lance ta première nuit depuis l'onglet « Ce soir »."))
                 } else {
                     List {
-                        ForEach(groups, id: \.month) { group in
+                        ForEach(groups) { group in
                             Section(group.month) {
                                 ForEach(group.items) { item in
                                     NavigationLink { SessionDetailView(item: item) } label: { SessionRow(item: item) }
