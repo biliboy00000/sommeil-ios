@@ -74,6 +74,7 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
     private var recordingSection: some View {
         Section {
             DatePicker(selection: Binding(get: { settings.wakeDate }, set: { settings.wakeDate = $0 }),
