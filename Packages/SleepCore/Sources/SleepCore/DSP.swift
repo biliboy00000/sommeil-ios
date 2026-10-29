@@ -149,11 +149,13 @@ public enum DSP {
         let n = x.count
         let energy = x.reduce(0) { $0 + $1 * $1 }
         guard energy > 0, lags.lowerBound >= 0 else { return Array(repeating: 0, count: lags.count) }
-        return lags.map { lag in
-            guard lag < n else { return 0 }
-            var s = 0.0
-            for i in 0..<(n - lag) { s += x[i] * x[i + lag] }
-            return unbiased ? s / energy * Double(n) / Double(n - lag) : s / energy
+        return x.withUnsafeBufferPointer { p in
+            lags.map { lag in
+                guard lag < n else { return 0 }
+                var s = 0.0
+                for i in 0..<(n - lag) { s += p[i] * p[i + lag] }
+                return unbiased ? s / energy * Double(n) / Double(n - lag) : s / energy
+            }
         }
     }
 

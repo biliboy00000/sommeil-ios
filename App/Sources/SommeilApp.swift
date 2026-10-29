@@ -14,6 +14,7 @@ struct SommeilApp: App {
                 .environmentObject(model.recorder)
                 .environmentObject(model.recorder.heart)
                 .environmentObject(model.settings)
+                .environmentObject(model.analysis)
         }
     }
 }

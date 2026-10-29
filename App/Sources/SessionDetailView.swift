@@ -1,5 +1,6 @@
 import SwiftUI
 import SleepCore
+import Charts
 
 /// Onglet « Nuits » : tous les enregistrements, regroupés par mois.
 struct NightsView: View {
@@ -35,6 +36,12 @@ struct NightsView: View {
                                            description: Text("Lance ta première nuit depuis l'onglet « Ce soir »."))
                 } else {
                     List {
+                        let scored = model.sessions.filter { $0.isNight && $0.report?.score != nil }
+                        if scored.count >= 2 {
+                            Section("Tendance") {
+                                TrendChart(items: Array(scored.prefix(14)))
+                            }
+                        }
                         ForEach(groups) { group in
                             Section(group.month) {
                                 ForEach(group.items) { item in
@@ -95,7 +102,15 @@ struct SessionRow: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
-            if let summary = item.summary {
+            if let score = item.report?.score {
+                Text("\(score.value)")
+                    .font(.subheadline.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(ScoreCard.color(score.value).gradient, in: Circle())
+                    .accessibilityLabel("Note \(score.value) sur 100")
+            } else if let summary = item.summary {
                 ProgressRing(progress: summary.sensorCoverage, lineWidth: 4,
                              tint: summary.sensorCoverage >= 0.98 ? .green : .orange)
                     .frame(width: 26, height: 26)
@@ -119,10 +134,23 @@ struct SessionDetailView: View {
     @State private var confirmDelete = false
     @State private var alert: AlertMessage?
 
+    /// Version à jour (le rapport arrive après l'ouverture de l'écran).
+    private var current: SessionItem { model.sessions.first { $0.id == item.id } ?? item }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                if let summary = item.summary {
+                if let report = current.report {
+                    NightReportView(report: report, item: current)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                } else if current.summary != nil {
+                    AnalysisStatusCard(item: current)
+                }
+                Text("Enregistrement")
+                    .font(.title3.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
+                if let summary = current.summary {
                     header(summary)
                     timelineCard(summary)
                     coverageCard(summary)
@@ -131,13 +159,9 @@ struct SessionDetailView: View {
                     Text("Pas encore de bilan pour cet enregistrement (il est peut-être en cours).")
                         .card()
                 }
-                Text("L'analyse complète de la nuit (pouls, respiration, positions, ronflements) arrive dans une "
-                     + "prochaine version de l'app.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 actions
             }
+            .animation(.snappy, value: current.report?.computedUnix)
             .padding(.horizontal)
             .padding(.bottom, 24)
         }
@@ -343,5 +367,44 @@ struct SessionDetailView: View {
         case "son": return "son"
         default: return "aucun enregistrement"
         }
+    }
+}
+
+/// Note des dernières nuits, avec la moyenne.
+struct TrendChart: View {
+    let items: [SessionItem]
+
+    private struct Entry: Identifiable {
+        var id: String
+        var date: Date
+        var score: Int
+    }
+
+    var body: some View {
+        let entries = items.compactMap { item -> Entry? in
+            guard let score = item.report?.score, let date = item.startDate else { return nil }
+            return Entry(id: item.id, date: Calendar.current.startOfDay(for: date.addingTimeInterval(-12 * 3600)), score: score.value)
+        }
+        let average = entries.isEmpty ? 0 : Double(entries.map(\.score).reduce(0, +)) / Double(entries.count)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(Int(average.rounded()))")
+                    .font(.title.weight(.bold))
+                    .monospacedDigit()
+                Text("de moyenne sur \(entries.count) nuits").font(.subheadline).foregroundStyle(.secondary)
+            }
+            Chart(entries) { entry in
+                BarMark(x: .value("Nuit", entry.date, unit: .day), y: .value("Note", entry.score))
+                    .foregroundStyle(ScoreCard.color(entry.score).gradient)
+                    .cornerRadius(4)
+                RuleMark(y: .value("Moyenne", average))
+                    .foregroundStyle(.secondary)
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            }
+            .chartYScale(domain: 0...100)
+            .chartYAxis { AxisMarks(values: [0, 50, 100]) }
+            .frame(height: 120)
+        }
+        .padding(.vertical, 4)
     }
 }

@@ -51,6 +51,8 @@ final class Recorder: ObservableObject {
     @Published private(set) var kind: Kind = .night
     @Published private(set) var live = Live()
     @Published private(set) var sessionDirectory: URL?
+    /// Emplacement du téléphone pour l'enregistrement en cours : "corps" ou "a_cote".
+    @Published private(set) var placement = "corps"
 
     let sensorQueue = DispatchQueue(label: "sommeil.capteurs", qos: .userInitiated)
     let analyzer = LiveAnalyzer()
@@ -281,6 +283,9 @@ final class Recorder: ObservableObject {
         session.calibrationMode = automaticCalibration ? "automatique" : "guidee"
         // Nuit programmée : le micro tourne déjà, avec le réglage choisi au moment du « Oui ».
         session.audioMode = audio?.modeName ?? (settings.mediaFriendlyAudio ? "normal" : "mesure")
+        // Le test guidé se fait toujours téléphone sur la poitrine.
+        session.placement = kind == .guided ? "corps" : settings.placement
+        placement = session.placement ?? "corps"
 
         self.kind = kind
         sessionDirectory = directory
@@ -360,7 +365,8 @@ final class Recorder: ObservableObject {
 
         speaker.enabled = settings.voicePrompts
         if kind == .night && !automaticCalibration {
-            speaker.say("Allonge-toi sur le dos, et ne bouge plus pendant trente secondes.")
+            speaker.say(placement == "a_cote" ? "Pose le téléphone, et ne le touche plus pendant trente secondes."
+                                              : "Allonge-toi sur le dos, et ne bouge plus pendant trente secondes.")
         }
         UIApplication.shared.isIdleTimerDisabled = (kind == .guided)
 

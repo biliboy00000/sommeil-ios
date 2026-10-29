@@ -5,6 +5,7 @@ import SleepCore
 /// Ouverte par « Commencer la nuit » ou depuis la notification du soir.
 struct StartNightSheet: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
 
     let request: StartSheetRequest
@@ -46,7 +47,24 @@ struct StartNightSheet: View {
                 }
                 .tint(.indigo)
                 .sensoryFeedback(.selection, trigger: chosen)
-                Text(Self.explanation(chosen))
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Où sera le téléphone ?").font(.subheadline.weight(.semibold))
+                    Picker("Emplacement du téléphone", selection: $settings.placement) {
+                        Text("À côté de la tête").tag("a_cote")
+                        Text("Sur la poitrine").tag("corps")
+                    }
+                    .pickerStyle(.segmented)
+                    Text(settings.placement == "corps"
+                         ? "Pouls battement par battement, position du corps, respiration par le mouvement. Moins confortable."
+                         : "Confortable. Respiration et ronflements au micro, pouls moyen sur 5 min. Pose-le à plat, calé, "
+                           + "près de l'oreiller, sans le couvrir.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.opacity)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(.snappy, value: settings.placement)
+                Text(Self.explanation(chosen, placement: settings.placement))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -92,10 +110,13 @@ struct StartNightSheet: View {
         text.prefix(1).uppercased() + text.dropFirst()
     }
 
-    static func explanation(_ minutes: Int) -> String {
+    static func explanation(_ minutes: Int, placement: String) -> String {
         if minutes == 0 {
-            return "L'enregistrement commence tout de suite : allonge-toi sur le dos et ne bouge plus pendant "
-                + "30 secondes (calibration). Ensuite, verrouille l'écran."
+            return placement == "corps"
+                ? "L'enregistrement commence tout de suite : allonge-toi sur le dos et ne bouge plus pendant "
+                  + "30 secondes (calibration). Ensuite, verrouille l'écran."
+                : "L'enregistrement commence tout de suite : pose le téléphone et ne le touche plus pendant "
+                  + "30 secondes. Ensuite, tu peux verrouiller l'écran."
         }
         return "Verrouille l'écran. L'app attend en silence (rien n'est enregistré), puis enregistre jusqu'à ce que "
             + "tu l'arrêtes. Pas de voix : la calibration se fait toute seule, pendant un moment calme sur le dos. "

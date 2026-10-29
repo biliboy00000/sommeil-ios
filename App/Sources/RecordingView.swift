@@ -191,11 +191,19 @@ struct RecordingView: View {
     private func phaseCard(_ live: Recorder.Live) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if live.calibrationRemaining != nil {
-                Label("Allongé sur le dos, sans bouger", systemImage: "figure.mind.and.body")
-                    .font(.headline)
-                Text("30 secondes pour connaître la position « sur le dos ». Respire normalement.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.7))
+                if recorder.placement == "a_cote" {
+                    Label("Ne touche plus le téléphone", systemImage: "iphone.gen3")
+                        .font(.headline)
+                    Text("30 secondes pour mesurer le calme de la pièce. Ensuite, verrouille l'écran.")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.7))
+                } else {
+                    Label("Allongé sur le dos, sans bouger", systemImage: "figure.mind.and.body")
+                        .font(.headline)
+                    Text("30 secondes pour connaître la position « sur le dos ». Respire normalement.")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.7))
+                }
             } else if live.autoCalibrating {
                 Label("Calibration automatique", systemImage: "figure.mind.and.body").font(.headline)
                 Text("Elle se fera toute seule dès que tu seras calme sur le dos. Rien à faire.")

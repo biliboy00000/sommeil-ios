@@ -52,7 +52,7 @@ jobs:
         run: |
           xcodebuild -project Sommeil.xcodeproj -scheme Sommeil -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
-            MARKETING_VERSION=0.2.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            MARKETING_VERSION=0.3.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build > build.log 2>&1 || {
               echo "::group::Erreurs de compilation"
@@ -73,7 +73,7 @@ jobs:
           zip -qry Sommeil.ipa Payload
           ls -lh Sommeil.ipa
       - name: Fabriquer la source SideStore (mises à jour depuis l'iPhone)
-        run: python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.2.${{ github.run_number }}" source.json
+        run: python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.3.${{ github.run_number }}" source.json
       - name: Garder le journal de compilation
         if: always()
         uses: actions/upload-artifact@v4
@@ -92,8 +92,8 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2.${{ github.run_number }}
-          name: Sommeil 0.2.${{ github.run_number }}
+          tag_name: v0.3.${{ github.run_number }}
+          name: Sommeil 0.3.${{ github.run_number }}
           make_latest: true
           files: |
             Sommeil.ipa

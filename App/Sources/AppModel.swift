@@ -8,6 +8,11 @@ struct SessionItem: Identifiable, Equatable {
     let url: URL
     let info: SessionInfo?
     let summary: SessionSummary?
+    let report: NightReport?
+
+    static func == (a: SessionItem, b: SessionItem) -> Bool {
+        a.url == b.url && a.summary == b.summary && a.report?.computedUnix == b.report?.computedUnix
+    }
 
     var id: String { url.lastPathComponent }
 
@@ -46,7 +51,8 @@ enum SessionStore {
             guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
                 return nil
             }
-            return SessionItem(url: url, info: try? SessionInfo.read(from: url), summary: SessionSummary.read(from: url))
+            return SessionItem(url: url, info: try? SessionInfo.read(from: url), summary: SessionSummary.read(from: url),
+                               report: NightReport.read(from: url))
         }
     }
 
@@ -170,6 +176,7 @@ enum AppTab: Hashable {
 final class AppModel: ObservableObject {
     let settings: AppSettings
     let recorder: Recorder
+    let analysis = NightAnalysisRunner()
 
     @Published var tab: AppTab = .tonight
     @Published private(set) var sessions: [SessionItem] = []
@@ -190,12 +197,21 @@ final class AppModel: ObservableObject {
         recorder = Recorder()
         recorder.settings = settings
         installation = DeviceInfo.installation
-        recorder.onFinished = { [weak self] _ in
+        recorder.onFinished = { [weak self] directory in
             guard let self else { return }
             withAnimation(.snappy) {
                 self.refresh()
                 self.tab = .tonight
             }
+            // La nuit qui vient de finir passe en premier.
+            self.analysis.enqueue(directory, first: true)
+        }
+        analysis.canRun = { [weak self] in
+            guard let self else { return false }
+            return !self.recorder.isRecording && !self.recorder.isWaiting
+        }
+        analysis.onReport = { [weak self] _ in
+            withAnimation(.snappy) { self?.refresh() }
         }
         recorder.onDelayedStartFailed = { [weak self] error in
             self?.alert = AlertMessage(title: "La nuit programmée n'a pas démarré", message: error)
@@ -207,6 +223,7 @@ final class AppModel: ObservableObject {
             Diagnostics.shared.log("Séances interrompues trouvées : \(found.map(\.lastPathComponent))")
         }
         refresh()
+        analysis.enqueueMissing(sessions, excluding: recorder.sessionDirectory)
         NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive),
                                                name: UIApplication.didBecomeActiveNotification, object: nil)
         NightReminder.shared.setHandler { [weak self] request in self?.handle(request) }
@@ -327,6 +344,7 @@ final class AppModel: ObservableObject {
 
     @objc private func didBecomeActive() {
         refresh()
+        analysis.enqueueMissing(sessions, excluding: recorder.sessionDirectory)
         updateReminders()
         runPendingReminder()
     }

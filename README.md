@@ -10,8 +10,10 @@ sur la poitrine. Depuis la version 0.2, plus besoin du PC ni du Blue Yeti.
 
 - **Fait (0.2)** : app autonome (PC et Blue Yeti retirés), nouvelle interface en onglets
   (Ce soir, Cœur, Nuits, Réglages), écran « Cœur en direct », installation par SideStore.
-- **Ensuite** : analyse de la nuit sur l'iPhone (pouls, respiration, positions, mouvements, note de la nuit),
-  rapport du matin et historique.
+- **Fait (0.3)** : analyse de la nuit sur l'iPhone (mouvements, position, pouls, respiration au
+  mouvement et au micro, pauses possibles, ronflements, endormissement, note sur 100), rapport
+  avec chronologie et événements à réécouter, tendance des notes.
+- **Ensuite** : vérification sur de vraies nuits, phases de sommeil estimées, réveil intelligent.
 
 Le plan complet : fiche « Refonte de l'app Sommeil : iPhone seul ».
 

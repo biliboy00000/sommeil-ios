@@ -10,6 +10,7 @@ journal.jsonl       événements : début, fin, interruptions, trous, marqueurs 
 horloge.jsonl       correspondance horloge des capteurs ↔ heure réelle, toutes les 10 s
 etat.jsonl          état de l'iPhone toutes les 15 s (batterie, température, compteurs)
 resume.json         bilan calculé à la fin (ou à la réouverture après un arrêt brutal)
+analyse.json        rapport de la nuit calculé sur l'iPhone (depuis 0.3) : voir plus bas
 capteurs/dm_00000.bin, dm_00001.bin…    mouvement fusionné, un fichier par 10 minutes
 capteurs/acc_00000.bin…                 accéléromètre brut (si « capteurs bruts » activé)
 capteurs/gyr_00000.bin…                 gyroscope brut (si « capteurs bruts » activé)
@@ -103,8 +104,37 @@ en g), date d'expiration de l'installation, test de l'API haute fréquence d'App
 - `audioMode` (depuis 0.2.13) : réglage du micro. `mesure` = son brut, sans traitement d'iOS ;
   `normal` = réglage par défaut d'iOS, choisi quand une vidéo ou un podcast joue au coucher (le son de
   l'autre app reste normal, mais iOS peut traiter un peu le son du micro). Absent : `mesure`.
+- `placement` (depuis 0.3) : emplacement du téléphone choisi au coucher, `corps` (sur la poitrine) ou
+  `a_cote` (près de la tête). Absent : l'analyse le devine (battements nets = sur le corps).
 - `delayedStart` (seulement si un délai a été choisi) : `{requestedUnix, delayMinutes, source}`.
   `requestedUnix` est l'heure du « Oui », `source` vaut `notification` ou `app`. Pendant l'attente,
   le micro tourne pour garder l'app active mais rien n'est écrit : la séance commence à `startUnix`.
   Le journal le reprend dans `session_debut` (`info.debut_differe`, `values.attente_min`,
   `values.demande_unix`).
+
+## analyse.json (rapport de la nuit, depuis 0.3)
+
+Calculé par l'app après l'arrêt (`SleepCore/NightAnalyzer.swift`, `NightReport.swift`), recalculable
+à tout moment. Heures en unix. `version` : version de la méthode (une version plus récente relance
+l'analyse).
+
+- `epochs` : une valeur par tranche de 30 s depuis `startUnix` — `coverage`, `movingSeconds`,
+  `position` (`dos`, `ventre`, `gauche`, `droite`, `debout`, vide si inconnue ou téléphone à côté),
+  `heartBPM` (battements nets seulement), `heartQuality`, `breathRate`, `breathSource` (`mouvement`,
+  `son`), `soundNoise` (part de bruit continu), `snore` (souffles graves et forts).
+- `blocks` : un bloc de 5 min — `level` (`calme`, `leger`, `agite`, `manquant`), `heartBPM` et
+  `heartSource` (`battements` : médiane des tranches nettes ; `moyenne` : autocorrélations de 10 s
+  moyennées sur le bloc, gardées si un bloc voisin donne le même pouls à ±5 bpm), `breathRate`.
+- `events` : `pause`, `chute`, `telephone_deplace`, `ronflement`, `interruption`, `trou`.
+- `summary` : repos, part calme, grands mouvements par heure, endormissement probable (premier quart
+  d'heure calme), réveils probables, positions, pouls (médiane, minimum, début et fin), RMSSD,
+  respiration, pauses possibles par heure suivie, ronflements, part de bruit continu.
+- `score` : note sur 100 (repères du 23/10/2026 : repos 4→7 h, calme 30→80 %, grands mouvements
+  14→4 /h, pauses 15→0 /h, baisse du pouls −10→+10 bpm ; pondérations 25/20/20/20/15 %, indicateurs
+  absents retirés), `verdict`, détail par indicateur. Pas de note sous 2 h d'enregistrement.
+
+Méthodes : mouvement = maximum par seconde de l'accélération sans gravité filtrée 1–20 Hz, au-dessus de
+4 × la médiane des 20 minutes autour (et ≥ 5 mg), écarts ≤ 5 s fusionnés, grand si > 30 mg ou ≥ 10 s ;
+bloc agité si un grand mouvement ou ≥ 30 s de mouvement. Son : spectre toutes les 20 ms, 24 bandes
+150–5000 Hz blanchies par le bruit de fond (20e centile sur 15 s), souffle ≥ 0,3 s au-dessus du seuil,
+bruit continu au-delà de 5 s ou quand le fond dépasse de 8 dB le calme de la nuit (vidéo, podcast).

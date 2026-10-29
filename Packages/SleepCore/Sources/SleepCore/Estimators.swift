@@ -67,15 +67,22 @@ public enum HeartbeatEstimator {
     /// Essaie chaque voie, puis leur combinaison pondérée par la qualité, et garde la meilleure.
     public static func best(channels: [(name: String, signal: [Double])], sampleRate fs: Double)
         -> (best: HeartEstimate, perChannel: [HeartEstimate]) {
-        var envelopes: [[Double]] = []
+        let result = best(envelopes: channels.map { envelope($0.signal, sampleRate: fs) },
+                          names: channels.map(\.name), sampleRate: fs)
+        return (result.best, result.perChannel)
+    }
+
+    /// Même chose à partir des enveloppes déjà calculées. Renvoie aussi l'enveloppe de la meilleure voie
+    /// (ou de la combinaison), pour repérer les battements.
+    public static func best(envelopes: [[Double]], names: [String], sampleRate fs: Double)
+        -> (best: HeartEstimate, perChannel: [HeartEstimate], bestEnvelope: [Double]) {
         var estimates: [HeartEstimate] = []
-        for (name, signal) in channels {
-            let env = envelope(signal, sampleRate: fs)
-            envelopes.append(env)
+        for (env, name) in zip(envelopes, names) {
             estimates.append(estimate(envelope: env, sampleRate: fs, channel: name))
         }
-        var best = estimates.max { $0.quality < $1.quality }
-            ?? HeartEstimate(bpm: nil, quality: 0, channel: "")
+        var bestIndex = estimates.indices.max { estimates[$0].quality < estimates[$1].quality }
+        var best = bestIndex.map { estimates[$0] } ?? HeartEstimate(bpm: nil, quality: 0, channel: "")
+        var bestEnvelope = bestIndex.map { envelopes[$0] } ?? []
         // Combinaison : enveloppes normalisées, pondérées par le carré de leur qualité.
         let length = envelopes.map(\.count).min() ?? 0
         if length > 0, estimates.count > 1 {
@@ -89,11 +96,16 @@ public enum HeartbeatEstimator {
                 for i in 0..<length { combined[i] += weight * env[i] / sd }
             }
             if totalWeight > 0 {
-                let mixed = estimate(envelope: DSP.removeMean(combined), sampleRate: fs, channel: "combiné")
-                if mixed.quality > best.quality { best = mixed }
+                let mixedEnvelope = DSP.removeMean(combined)
+                let mixed = estimate(envelope: mixedEnvelope, sampleRate: fs, channel: "combiné")
+                if mixed.quality > best.quality {
+                    best = mixed
+                    bestEnvelope = mixedEnvelope
+                    bestIndex = nil
+                }
             }
         }
-        return (best, estimates)
+        return (best, estimates, bestEnvelope)
     }
 
     /// Positions des battements dans une enveloppe, connaissant la période approximative.
@@ -186,4 +198,59 @@ public enum MovementLevel {
 
     /// Au-delà de ce seuil (en g), on considère que la personne bouge.
     public static let movingThreshold = 0.02
+}
+
+// MARK: - Analyse de la nuit : courbes d'autocorrélation moyennables
+
+extension HeartbeatEstimator {
+    /// Décalages examinés (en mesures) : de 150 à 40 battements par minute, avec une marge d'une mesure.
+    public static func lags(sampleRate fs: Double) -> ClosedRange<Int> {
+        let minLag = Int((fs * 60 / maxBPM).rounded(.down))
+        let maxLag = Int((fs * 60 / minBPM).rounded(.up))
+        return (minLag - 1)...(maxLag + 1)
+    }
+
+    /// Courbe d'autocorrélation d'une enveloppe, ou nil si l'enveloppe est trop courte.
+    /// Plusieurs courbes peuvent être moyennées (pouls sur 5 min quand chaque fenêtre est trop faible).
+    public static func curve(envelope env: [Double], sampleRate fs: Double) -> [Double]? {
+        let range = lags(sampleRate: fs)
+        guard env.count > (range.upperBound - 1) * 2 else { return nil }
+        return DSP.autocorrelation(DSP.removeMean(env), lags: range)
+    }
+
+    /// Pouls à partir d'une courbe (éventuellement moyenne). `length` : longueur des enveloppes.
+    public static func estimate(curve: [Double], length: Int, sampleRate fs: Double, channel: String) -> HeartEstimate {
+        let start = lags(sampleRate: fs).lowerBound
+        guard let peak = DSP.fundamentalPeak(curve, lagStart: start) else {
+            return HeartEstimate(bpm: nil, quality: 0, channel: channel)
+        }
+        let n = Double(length)
+        let quality = max(0, min(1, peak.value * n / (n - peak.lag)))
+        let bpm = 60 * fs / peak.lag
+        guard quality > 0.05, bpm >= minBPM - 1, bpm <= maxBPM + 1 else {
+            return HeartEstimate(bpm: nil, quality: quality, channel: channel)
+        }
+        return HeartEstimate(bpm: bpm, quality: quality, channel: channel)
+    }
+}
+
+extension BreathingEstimator {
+    /// Respiration à partir d'un seul signal (par exemple la rotation du thorax vue par le gyroscope),
+    /// déjà à `sampleRate` (10 Hz conseillé).
+    public static func estimate(signal: [Double], sampleRate rate: Double) -> (perMinute: Double?, quality: Double) {
+        let maxLag = Int((rate * 60 / minPerMinute).rounded(.up))
+        let minLag = Int((rate * 60 / maxPerMinute).rounded(.down))
+        guard signal.count > maxLag + Int(rate * 5), minLag >= 1 else { return (nil, 0) }
+        let filtered = FilterChain([.highPass(cutoff: 0.1, sampleRate: rate),
+                                    .lowPass(cutoff: 0.7, sampleRate: rate),
+                                    .lowPass(cutoff: 0.7, sampleRate: rate)])
+            .applyZeroPhase(DSP.removeMean(signal), padding: Int(rate * 5))
+        let ac = DSP.autocorrelation(filtered, lags: (minLag - 1)...(maxLag + 1))
+        guard let peak = DSP.fundamentalPeak(ac, lagStart: minLag - 1) else { return (nil, 0) }
+        let count = Double(filtered.count)
+        let quality = max(0, min(1, peak.value * count / (count - peak.lag)))
+        let perMinute = 60 * rate / peak.lag
+        guard quality > 0.1, perMinute >= minPerMinute - 0.5, perMinute <= maxPerMinute + 0.5 else { return (nil, quality) }
+        return (perMinute, quality)
+    }
 }

@@ -195,6 +195,9 @@ public struct SessionInfo: Codable, Equatable, Sendable {
     /// Réglage du micro : "mesure" (son brut, sans traitement d'iOS) ou "normal" (compatible avec une vidéo
     /// ou un podcast qui joue en même temps). Absent avant la version 0.2.13 : "mesure".
     public var audioMode: String?
+    /// Emplacement du téléphone annoncé au coucher : "corps" (sur la poitrine) ou "a_cote" (près de la tête).
+    /// Absent : l'analyse le devine (battements nets = sur le corps).
+    public var placement: String?
     public var notes: [String]
 
     public init(id: String, kind: String, appVersion: String, device: String, systemVersion: String,

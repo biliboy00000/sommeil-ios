@@ -21,6 +21,8 @@ final class AppSettings: ObservableObject {
     @Published var lastDelayMinutes: Int { didSet { defaults.set(lastDelayMinutes, forKey: "lastDelayMinutes") } }
     /// Écran « Cœur » : tracé des vibrations ("signal") ou des battements ("pouls").
     @Published var heartTrace: String { didSet { defaults.set(heartTrace, forKey: "heartTrace") } }
+    /// Emplacement du téléphone pour la nuit : "a_cote" (près de la tête) ou "corps" (sur la poitrine).
+    @Published var placement: String { didSet { defaults.set(placement, forKey: "placement") } }
     /// Une vidéo ou un podcast joue souvent au coucher : micro en réglage « normal » plutôt que « mesure ».
     @Published var mediaFriendlyAudio: Bool { didSet { defaults.set(mediaFriendlyAudio, forKey: "mediaFriendlyAudio") } }
     /// Heure (unix) du dernier « Oui » : pas de rappel dans les 12 h qui suivent.
@@ -30,7 +32,7 @@ final class AppSettings: ObservableObject {
         defaults.register(defaults: ["rawSensors": true, "voicePrompts": true, "wakeMinutes": 7 * 60 + 30,
                                      "bedtimeReminder": false, "bedtimeMinutes": 23 * 60,
                                      "lastDelayMinutes": 0, "lastNightStartUnix": 0.0, "heartTrace": "signal",
-                                     "mediaFriendlyAudio": true])
+                                     "mediaFriendlyAudio": true, "placement": "a_cote"])
         // Réglages de la v1 (PC, Blue Yeti) : plus utilisés.
         for key in ["pcAddress", "pcCode", "controlYeti", "autoUpload"] { defaults.removeObject(forKey: key) }
         rawSensors = defaults.bool(forKey: "rawSensors")
@@ -41,6 +43,7 @@ final class AppSettings: ObservableObject {
         lastDelayMinutes = defaults.integer(forKey: "lastDelayMinutes")
         heartTrace = defaults.string(forKey: "heartTrace") ?? "signal"
         mediaFriendlyAudio = defaults.bool(forKey: "mediaFriendlyAudio")
+        placement = defaults.string(forKey: "placement") ?? "a_cote"
         lastNightStartUnix = defaults.double(forKey: "lastNightStartUnix")
     }
 

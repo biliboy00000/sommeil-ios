@@ -248,11 +248,18 @@ struct LastSessionCard: View {
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
-                ProgressRing(progress: item.summary?.sensorCoverage ?? 0, lineWidth: 6,
-                             tint: (item.summary?.endedNormally ?? true) ? .green : .orange)
-                Image(systemName: item.isNight ? "moon.fill" : "list.number")
-                    .font(.headline)
-                    .foregroundStyle(.indigo)
+                if let score = item.report?.score {
+                    ProgressRing(progress: Double(score.value) / 100, lineWidth: 6, tint: ScoreCard.color(score.value))
+                    Text("\(score.value)")
+                        .font(.headline.weight(.bold))
+                        .monospacedDigit()
+                } else {
+                    ProgressRing(progress: item.summary?.sensorCoverage ?? 0, lineWidth: 6,
+                                 tint: (item.summary?.endedNormally ?? true) ? .green : .orange)
+                    Image(systemName: item.isNight ? "moon.fill" : "list.number")
+                        .font(.headline)
+                        .foregroundStyle(.indigo)
+                }
             }
             .frame(width: 54, height: 54)
             VStack(alignment: .leading, spacing: 3) {
@@ -269,7 +276,11 @@ struct LastSessionCard: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {
-                if let summary = item.summary {
+                if let report = item.report {
+                    if let score = report.score { Text(score.verdict).foregroundStyle(ScoreCard.color(score.value)) }
+                    if let heart = report.summary.heartMedian { Text("pouls \(Int(heart.rounded()))") }
+                    Text("\(report.summary.pauses) pause\(report.summary.pauses > 1 ? "s" : "") possible\(report.summary.pauses > 1 ? "s" : "")")
+                } else if let summary = item.summary {
                     Text("capteurs \(summary.sensorCoverage.percentText)")
                     Text("son \(summary.audioCoverage.percentText)")
                     if !summary.endedNormally {
