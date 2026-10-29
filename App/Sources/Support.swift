@@ -21,13 +21,16 @@ final class AppSettings: ObservableObject {
     @Published var lastDelayMinutes: Int { didSet { defaults.set(lastDelayMinutes, forKey: "lastDelayMinutes") } }
     /// Écran « Cœur » : tracé des vibrations ("signal") ou des battements ("pouls").
     @Published var heartTrace: String { didSet { defaults.set(heartTrace, forKey: "heartTrace") } }
+    /// Une vidéo ou un podcast joue souvent au coucher : micro en réglage « normal » plutôt que « mesure ».
+    @Published var mediaFriendlyAudio: Bool { didSet { defaults.set(mediaFriendlyAudio, forKey: "mediaFriendlyAudio") } }
     /// Heure (unix) du dernier « Oui » : pas de rappel dans les 12 h qui suivent.
     var lastNightStartUnix: Double { didSet { defaults.set(lastNightStartUnix, forKey: "lastNightStartUnix") } }
 
     init() {
         defaults.register(defaults: ["rawSensors": true, "voicePrompts": true, "wakeMinutes": 7 * 60 + 30,
                                      "bedtimeReminder": false, "bedtimeMinutes": 23 * 60,
-                                     "lastDelayMinutes": 0, "lastNightStartUnix": 0.0, "heartTrace": "signal"])
+                                     "lastDelayMinutes": 0, "lastNightStartUnix": 0.0, "heartTrace": "signal",
+                                     "mediaFriendlyAudio": true])
         // Réglages de la v1 (PC, Blue Yeti) : plus utilisés.
         for key in ["pcAddress", "pcCode", "controlYeti", "autoUpload"] { defaults.removeObject(forKey: key) }
         rawSensors = defaults.bool(forKey: "rawSensors")
@@ -37,6 +40,7 @@ final class AppSettings: ObservableObject {
         bedtimeMinutes = defaults.integer(forKey: "bedtimeMinutes")
         lastDelayMinutes = defaults.integer(forKey: "lastDelayMinutes")
         heartTrace = defaults.string(forKey: "heartTrace") ?? "signal"
+        mediaFriendlyAudio = defaults.bool(forKey: "mediaFriendlyAudio")
         lastNightStartUnix = defaults.double(forKey: "lastNightStartUnix")
     }
 

@@ -100,6 +100,9 @@ en g), date d'expiration de l'installation, test de l'API haute fréquence d'App
 - `calibrationMode` : `guidee` (30 s sur le dos au début, avec la voix) ou `automatique` (nuit au
   début différé : l'app examine des tranches de 30 s et retient la première calme, à plat et écran vers
   le haut ; en attendant, ou si aucune ne convient, elle garde la meilleure tranche vue).
+- `audioMode` (depuis 0.2.13) : réglage du micro. `mesure` = son brut, sans traitement d'iOS ;
+  `normal` = réglage par défaut d'iOS, choisi quand une vidéo ou un podcast joue au coucher (le son de
+  l'autre app reste normal, mais iOS peut traiter un peu le son du micro). Absent : `mesure`.
 - `delayedStart` (seulement si un délai a été choisi) : `{requestedUnix, delayMinutes, source}`.
   `requestedUnix` est l'heure du « Oui », `source` vaut `notification` ou `app`. Pendant l'attente,
   le micro tourne pour garder l'app active mais rien n'est écrit : la séance commence à `startUnix`.

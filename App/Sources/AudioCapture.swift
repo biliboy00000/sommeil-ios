@@ -57,11 +57,19 @@ final class AudioCapture {
     /// Niveau sonore (dBFS) environ deux fois par seconde.
     var onLevel: ((Double) -> Void)?
 
-    /// Micro sans écriture : appeler `beginWriting` pour commencer à enregistrer.
-    init() {}
+    /// Vrai : réglage « normal » d'iOS, qui laisse une vidéo ou un podcast sonner comme d'habitude.
+    /// Faux : mode « mesure » (son brut, sans traitement), qui rend le son des autres apps faible et métallique
+    /// sur le haut-parleur tant que le micro est allumé.
+    let mediaFriendly: Bool
+    var modeName: String { mediaFriendly ? "normal" : "mesure" }
 
-    convenience init(sessionDirectory: URL) throws {
-        self.init()
+    /// Micro sans écriture : appeler `beginWriting` pour commencer à enregistrer.
+    init(mediaFriendly: Bool) {
+        self.mediaFriendly = mediaFriendly
+    }
+
+    convenience init(sessionDirectory: URL, mediaFriendly: Bool) throws {
+        self.init(mediaFriendly: mediaFriendly)
         try beginWriting(sessionDirectory: sessionDirectory)
     }
 
@@ -127,7 +135,11 @@ final class AudioCapture {
 
     private func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .measurement, options: [.mixWithOthers, .defaultToSpeaker])
+        // - mixWithOthers : une vidéo ou un podcast continue de jouer.
+        // - allowBluetoothA2DP : des écouteurs Bluetooth (AirPods…) restent en qualité musique ; sans cette option,
+        //   le son quitte les écouteurs pour le haut-parleur. Le micro reste celui de l'iPhone (voir plus bas).
+        try session.setCategory(.playAndRecord, mode: mediaFriendly ? .default : .measurement,
+                                options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP])
         try? session.setPreferredSampleRate(48_000)
         try? session.setPreferredIOBufferDuration(0.05)
         try session.setActive(true)
@@ -484,7 +496,9 @@ final class AudioCapture {
         var info: [String: String] = [
             "entree": input?.portName ?? "aucune",
             "type_entree": input?.portType.rawValue ?? "aucune",
-            "sortie": session.currentRoute.outputs.first?.portName ?? "aucune"
+            "sortie": session.currentRoute.outputs.first?.portName ?? "aucune",
+            "type_sortie": session.currentRoute.outputs.first?.portType.rawValue ?? "aucune",
+            "mode": modeName
         ]
         if let source = session.inputDataSource?.dataSourceName { info["source_micro"] = source }
         onEvent?(type, "\(prefix) — entrée : \(info["entree"] ?? "?")",

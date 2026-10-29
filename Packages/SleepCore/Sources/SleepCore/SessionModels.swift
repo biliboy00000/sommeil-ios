@@ -192,6 +192,9 @@ public struct SessionInfo: Codable, Equatable, Sendable {
     public var delayedStart: DelayedStart?
     /// "guidee" (30 s sur le dos au début) ou "automatique" (cherchée pendant la nuit).
     public var calibrationMode: String?
+    /// Réglage du micro : "mesure" (son brut, sans traitement d'iOS) ou "normal" (compatible avec une vidéo
+    /// ou un podcast qui joue en même temps). Absent avant la version 0.2.13 : "mesure".
+    public var audioMode: String?
     public var notes: [String]
 
     public init(id: String, kind: String, appVersion: String, device: String, systemVersion: String,

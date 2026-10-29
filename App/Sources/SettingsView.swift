@@ -4,6 +4,7 @@ import SleepCore
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var recorder: Recorder
 
     @State private var notificationsDenied = false
     @State private var reminderTestSent = false
@@ -91,6 +92,20 @@ struct SettingsView: View {
             Text("L'heure du réveil sert à prévoir la batterie restante le matin. « Capteurs bruts » enregistre aussi "
                  + "l'accéléromètre et le gyroscope non traités par iOS : utile pour affiner l'analyse, un peu plus "
                  + "de batterie et de stockage.")
+        }
+        Section {
+            Toggle(isOn: $settings.mediaFriendlyAudio) {
+                Label("Vidéo ou podcast en m'endormant", systemImage: "play.tv.fill")
+            }
+            .disabled(recorder.isRecording || recorder.isWaiting)
+        } header: {
+            Text("Micro")
+        } footer: {
+            Text("Activé : une vidéo ou un podcast garde un son normal pendant que l'app écoute (le micro passe en "
+                 + "réglage « normal » d'iOS). Désactivé : son brut, le plus fidèle pour l'analyse, mais le son des "
+                 + "autres apps devient faible et métallique sur le haut-parleur. Dans les deux cas, des écouteurs "
+                 + "Bluetooth restent en bonne qualité, et le son de la vidéo s'entend aussi sur l'enregistrement. "
+                 + "Le réglage s'applique à la prochaine nuit.")
         }
     }
 

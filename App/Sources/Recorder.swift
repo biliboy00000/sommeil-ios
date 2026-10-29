@@ -175,7 +175,7 @@ final class Recorder: ObservableObject {
         guard !isRecording, !isWaiting else { return "Une nuit est déjà en cours ou programmée." }
         // Le micro tourne dès maintenant sans rien écrire : c'est ce qui garde l'app active écran verrouillé,
         // et iOS ne permettrait pas de l'allumer plus tard depuis l'arrière-plan.
-        let capture = AudioCapture()
+        let capture = AudioCapture(mediaFriendly: settings.mediaFriendlyAudio)
         capture.onEvent = { [weak self] type, message, values, info in
             self?.log(type, message, values: values, info: info)
         }
@@ -279,6 +279,8 @@ final class Recorder: ObservableObject {
         session.audioSegmentSeconds = AudioCapture.segmentSeconds
         session.delayedStart = delayed
         session.calibrationMode = automaticCalibration ? "automatique" : "guidee"
+        // Nuit programmée : le micro tourne déjà, avec le réglage choisi au moment du « Oui ».
+        session.audioMode = audio?.modeName ?? (settings.mediaFriendlyAudio ? "normal" : "mesure")
 
         self.kind = kind
         sessionDirectory = directory
@@ -289,7 +291,7 @@ final class Recorder: ObservableObject {
         var startInfo = ["appareil": session.device, "ios": session.systemVersion, "app": session.appVersion,
                          "capteurs_bruts": settings.rawSensors ? "oui" : "non",
                          "api_haute_frequence": session.highRateAPI?.description ?? "?",
-                         "calibration": session.calibrationMode ?? "?"]
+                         "calibration": session.calibrationMode ?? "?", "mode_micro": session.audioMode ?? "?"]
         var startValues = ["batterie": DeviceInfo.batteryLevel() ?? -1]
         if let delayed {
             startInfo["debut_differe"] = delayed.source
@@ -307,7 +309,7 @@ final class Recorder: ObservableObject {
                 try waiting.beginWriting(sessionDirectory: directory)
                 waiting.ensureRunning(reason: "début de la nuit programmée")
             } else {
-                let capture = try AudioCapture(sessionDirectory: directory)
+                let capture = try AudioCapture(sessionDirectory: directory, mediaFriendly: settings.mediaFriendlyAudio)
                 capture.onEvent = { [weak self] type, message, values, info in
                     self?.log(type, message, values: values, info: info)
                 }
