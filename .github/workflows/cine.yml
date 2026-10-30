@@ -76,6 +76,9 @@ jobs:
           test -f Payload/Cine.app/default.metallib
           ls -l Payload/Cine.app/default.metallib
           plutil -p Payload/Cine.app/Info.plist | grep -E "CFBundleIdentifier|CFBundleDisplayName|UsageDescription"
+          # SideStore nomme l'identifiant d'app d'après ce nom : Apple refuse les accents.
+          plutil -extract CFBundleDisplayName raw Payload/Cine.app/Info.plist | LC_ALL=C grep -qE '^[A-Za-z0-9 ]+$'
+          ls Payload/Cine.app/fr.lproj/InfoPlist.strings
           zip -qry Cine.ipa Payload
           ls -lh Cine.ipa
       - name: Garder le journal de compilation

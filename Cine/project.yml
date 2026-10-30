@@ -40,7 +40,9 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: Ciné
+        # Sans accent ici : SideStore donne ce nom à l'identifiant d'app chez Apple, qui refuse les accents.
+        # Le nom affiché sur l'écran d'accueil (« Ciné ») vient de fr.lproj et en.lproj/InfoPlist.strings.
+        CFBundleDisplayName: Cine
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
