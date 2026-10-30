@@ -310,7 +310,8 @@ final class Log {
     func add(_ line: String) {
         let text = "\(formatter.string(from: Date())) \(line)\n"
         print(text, terminator: "")
-        queue.async {
+        // Écriture immédiate : si l'app se ferme juste après, la ligne est déjà sur le disque.
+        queue.sync {
             guard let data = text.data(using: .utf8) else { return }
             if let handle = try? FileHandle(forWritingTo: self.url) {
                 handle.seekToEndOfFile()

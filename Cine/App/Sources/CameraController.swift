@@ -96,6 +96,18 @@ final class CameraController: NSObject, ObservableObject {
 
     private var device: AVCaptureDevice? { deviceInput?.device }
 
+    /// Les erreurs de réglage d'AVFoundation sont des exceptions Objective-C, qui fermeraient l'app :
+    /// on les attrape, on les note dans le journal et on prévient.
+    @discardableResult
+    private func guarded(_ step: String, quiet: Bool = false, _ work: () -> Void) -> Bool {
+        guard let problem = CineException.catching(work) else { return true }
+        Log.shared.add("Exception (\(step)) : \(problem)")
+        if !quiet {
+            DispatchQueue.main.async { self.onMessage?("Problème de l'appareil photo (\(step)) : \(problem)") }
+        }
+        return false
+    }
+
     // MARK: Démarrage
 
     func start(preferredLens: String?) {
@@ -127,7 +139,7 @@ final class CameraController: NSObject, ObservableObject {
     private func startSession(_ preferred: String?) {
         sessionQueue.async {
             if !self.configured { self.configure(preferred: preferred) }
-            if !self.session.isRunning { self.session.startRunning() }
+            if !self.session.isRunning { self.guarded("démarrage") { self.session.startRunning() } }
             let running = self.session.isRunning
             DispatchQueue.main.async {
                 self.isRunning = running
@@ -154,18 +166,22 @@ final class CameraController: NSObject, ObservableObject {
         }.sorted { $0.magnification < $1.magnification }
         devicesByID = Dictionary(devices.map { ($0.uniqueID, $0) }, uniquingKeysWith: { a, _ in a })
 
+        Log.shared.add("Objectifs : " + lenses.map { "\($0.label) (\(Int($0.focal.rounded())) mm)" }.joined(separator: ", "))
+
         session.beginConfiguration()
-        session.sessionPreset = .photo
-        if session.canAddOutput(photoOutput) { session.addOutput(photoOutput) }
-        videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-        videoOutput.alwaysDiscardsLateVideoFrames = true
-        videoOutput.deliversPreviewSizedOutputBuffers = true
-        videoOutput.setSampleBufferDelegate(renderer, queue: videoQueue)
-        if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
-        let first = preferred.flatMap { devicesByID[$0] } ?? main
-        attach(first)
-        session.commitConfiguration()
-        refreshOutputs()
+        guarded("configuration") {
+            if session.canSetSessionPreset(.photo) { session.sessionPreset = .photo }
+            if session.canAddOutput(photoOutput) { session.addOutput(photoOutput) }
+            // Avec le préréglage « photo », les images vidéo sont déjà à la taille de l'aperçu.
+            videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+            videoOutput.alwaysDiscardsLateVideoFrames = true
+            videoOutput.setSampleBufferDelegate(renderer, queue: videoQueue)
+            if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
+            let first = preferred.flatMap { devicesByID[$0] } ?? main
+            attach(first)
+        }
+        guarded("configuration") { session.commitConfiguration() }
+        guarded("sorties") { refreshOutputs() }
         configured = true
         let selected = deviceInput?.device.uniqueID
         DispatchQueue.main.async {
@@ -199,13 +215,15 @@ final class CameraController: NSObject, ObservableObject {
         } catch {
             return
         }
-        if device.activeFormat.isGlobalToneMappingSupported { device.isGlobalToneMappingEnabled = false }
-        if device.activeFormat.isVideoHDRSupported {
-            device.automaticallyAdjustsVideoHDREnabled = false
-            device.isVideoHDREnabled = false
+        guarded("préparation") {
+            if device.activeFormat.isGlobalToneMappingSupported { device.isGlobalToneMappingEnabled = false }
+            if device.activeFormat.isVideoHDRSupported {
+                device.automaticallyAdjustsVideoHDREnabled = false
+                device.isVideoHDREnabled = false
+            }
+            device.isSubjectAreaChangeMonitoringEnabled = true
+            if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
         }
-        device.isSubjectAreaChangeMonitoringEnabled = true
-        if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
         device.unlockForConfiguration()
         manual.focus = nil
         manual.locked = false
@@ -248,9 +266,9 @@ final class CameraController: NSObject, ObservableObject {
         sessionQueue.async {
             guard let device = self.devicesByID[id], device != self.device else { return }
             self.session.beginConfiguration()
-            self.attach(device)
-            self.session.commitConfiguration()
-            self.refreshOutputs()
+            self.guarded("objectif") { self.attach(device) }
+            self.guarded("objectif") { self.session.commitConfiguration() }
+            self.guarded("sorties") { self.refreshOutputs() }
         }
     }
 
@@ -313,14 +331,16 @@ final class CameraController: NSObject, ObservableObject {
             self.manual.locked = lock
             if !lock { self.manual.focus = nil }
             guard let device = self.device, (try? device.lockForConfiguration()) != nil else { return }
-            if self.manual.focus == nil, device.isFocusPointOfInterestSupported {
-                device.focusPointOfInterest = point
-                let mode: AVCaptureDevice.FocusMode = lock ? .autoFocus : .continuousAutoFocus
-                if device.isFocusModeSupported(mode) { device.focusMode = mode }
-            }
-            if self.manual.iso == nil, device.isExposurePointOfInterestSupported {
-                device.exposurePointOfInterest = point
-                if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
+            self.guarded("mise au point") {
+                if self.manual.focus == nil, device.isFocusPointOfInterestSupported {
+                    device.focusPointOfInterest = point
+                    let mode: AVCaptureDevice.FocusMode = lock ? .autoFocus : .continuousAutoFocus
+                    if device.isFocusModeSupported(mode) { device.focusMode = mode }
+                }
+                if self.manual.iso == nil, device.isExposurePointOfInterestSupported {
+                    device.exposurePointOfInterest = point
+                    if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
+                }
             }
             device.unlockForConfiguration()
             if lock {
@@ -334,13 +354,15 @@ final class CameraController: NSObject, ObservableObject {
         sessionQueue.async {
             guard !self.manual.locked, let device = self.device, (try? device.lockForConfiguration()) != nil else { return }
             let centre = CGPoint(x: 0.5, y: 0.5)
-            if self.manual.focus == nil, device.isFocusPointOfInterestSupported, device.isFocusModeSupported(.continuousAutoFocus) {
-                device.focusPointOfInterest = centre
-                device.focusMode = .continuousAutoFocus
-            }
-            if self.manual.iso == nil, device.isExposurePointOfInterestSupported, device.isExposureModeSupported(.continuousAutoExposure) {
-                device.exposurePointOfInterest = centre
-                device.exposureMode = .continuousAutoExposure
+            self.guarded("mise au point", quiet: true) {
+                if self.manual.focus == nil, device.isFocusPointOfInterestSupported, device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusPointOfInterest = centre
+                    device.focusMode = .continuousAutoFocus
+                }
+                if self.manual.iso == nil, device.isExposurePointOfInterestSupported, device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposurePointOfInterest = centre
+                    device.exposureMode = .continuousAutoExposure
+                }
             }
             device.unlockForConfiguration()
         }
@@ -348,7 +370,11 @@ final class CameraController: NSObject, ObservableObject {
 
     private func applyExposure() {
         guard let device, (try? device.lockForConfiguration()) != nil else { return }
-        defer { device.unlockForConfiguration() }
+        guarded("exposition") { applyExposure(device) }
+        device.unlockForConfiguration()
+    }
+
+    private func applyExposure(_ device: AVCaptureDevice) {
         let format = device.activeFormat
         if let iso = manual.iso, let shutter = manual.shutter, device.isExposureModeSupported(.custom) {
             let isoValue = Float(min(max(iso, Double(format.minISO)), Double(format.maxISO)))
@@ -368,7 +394,11 @@ final class CameraController: NSObject, ObservableObject {
 
     private func applyWhiteBalance() {
         guard let device, (try? device.lockForConfiguration()) != nil else { return }
-        defer { device.unlockForConfiguration() }
+        guarded("balance des blancs") { applyWhiteBalance(device) }
+        device.unlockForConfiguration()
+    }
+
+    private func applyWhiteBalance(_ device: AVCaptureDevice) {
         if let kelvin = manual.kelvin, device.isWhiteBalanceModeSupported(.locked) {
             var gains = device.deviceWhiteBalanceGains(
                 for: AVCaptureDevice.WhiteBalanceTemperatureAndTintValues(temperature: Float(kelvin), tint: 0))
@@ -384,7 +414,11 @@ final class CameraController: NSObject, ObservableObject {
 
     private func applyFocus() {
         guard let device, (try? device.lockForConfiguration()) != nil else { return }
-        defer { device.unlockForConfiguration() }
+        guarded("mise au point") { applyFocus(device) }
+        device.unlockForConfiguration()
+    }
+
+    private func applyFocus(_ device: AVCaptureDevice) {
         if let position = manual.focus, device.isLockingFocusWithCustomLensPositionSupported {
             device.setFocusModeLocked(lensPosition: Float(min(max(position, 0), 1)), completionHandler: nil)
         } else if device.isFocusModeSupported(.continuousAutoFocus) {
@@ -456,7 +490,8 @@ final class CameraController: NSObject, ObservableObject {
                 }
             })
             self.inFlight[id] = delegate
-            self.photoOutput.capturePhoto(with: settings, delegate: delegate)
+            let captured = self.guarded("prise de vue") { self.photoOutput.capturePhoto(with: settings, delegate: delegate) }
+            if !captured { self.inFlight[id] = nil }
         }
     }
 }

@@ -37,6 +37,7 @@ targets:
         # Noyaux Core Image écrits en Metal (FilmKernels.metal). « -cikernel » est obsolète pour l'éditeur de liens.
         MTL_COMPILER_FLAGS: "-fcikernel"
         MTLLINKER_FLAGS: "-fcikernel"
+        SWIFT_OBJC_BRIDGING_HEADER: App/Sources/Cine-Bridging-Header.h
     info:
       path: App/Info.plist
       properties:
@@ -57,6 +58,9 @@ targets:
           Ciné utilise l'appareil photo pour prendre des photos avec un rendu pellicule cinéma.
         NSPhotoLibraryAddUsageDescription: >-
           Ciné enregistre tes photos dans l'app Photos.
+        # Le journal (journal.txt) et les dernières photos apparaissent dans l'app Fichiers (« Sur mon iPhone › Ciné »).
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         ITSAppUsesNonExemptEncryption: false
 
 schemes:

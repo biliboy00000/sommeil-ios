@@ -14,7 +14,7 @@ enum FilmPipeline {
     static let context: CIContext = {
         let options: [CIContextOption: Any] = [
             .workingColorSpace: workingSpace,
-            .workingFormat: CIFormat.RGBAh,
+            .workingFormat: NSNumber(value: CIFormat.RGBAh.rawValue),
             .cacheIntermediates: false,
         ]
         if let device { return CIContext(mtlDevice: device, options: options) }
