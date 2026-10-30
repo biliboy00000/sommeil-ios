@@ -11,3 +11,6 @@ __pycache__/
 .venv-tests/
 Packages/SleepCore/.swiftpm/
 App/SommeilNotification-Info.plist
+Cine/App/Info.plist
+build-cine/
+Cine/Packages/FilmCore/.swiftpm/

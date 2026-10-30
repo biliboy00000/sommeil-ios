@@ -2,12 +2,19 @@
 # 1. Tests du cœur (SleepCore).
 # 2. Compilation de l'app pour iPhone, sans signature (SideStore signe ensuite avec ton identifiant Apple).
 # 3. Publication de Sommeil.ipa et de la source SideStore (source.json) dans « Releases ».
+# L'app Ciné (dossier Cine/) a sa propre compilation : .github/workflows/cine.yml.
 name: Compilation
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'Cine/**'
+      - '.github/workflows/cine.yml'
   pull_request:
+    paths-ignore:
+      - 'Cine/**'
+      - '.github/workflows/cine.yml'
   workflow_dispatch:
 
 permissions:
@@ -42,6 +49,10 @@ jobs:
     runs-on: macos-26
     needs: tests
     timeout-minutes: 40
+    # Une seule publication à la fois (Sommeil ou Ciné) : la source SideStore est commune.
+    concurrency:
+      group: publication-sidestore
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Installer XcodeGen
@@ -73,7 +84,13 @@ jobs:
           zip -qry Sommeil.ipa Payload
           ls -lh Sommeil.ipa
       - name: Fabriquer la source SideStore (mises à jour depuis l'iPhone)
-        run: python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.3.${{ github.run_number }}" source.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # On garde l'entrée de Ciné de la source actuelle.
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern source.json --output base.json 2>/dev/null \
+            || echo '{}' > base.json
+          python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.3.${{ github.run_number }}" source.json --base base.json
       - name: Garder le journal de compilation
         if: always()
         uses: actions/upload-artifact@v4

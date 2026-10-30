@@ -54,6 +54,15 @@ L'ancienne app reste à côté jusqu'à son expiration, avec ses enregistrements
 22 octobre sont déjà sur le PC. Pour une autre nuit restée sur l'iPhone, ouvre-la dans l'ancienne app et
 touche « Partager » avant de la supprimer.
 
+## 4 bis. Installer Ciné (appareil photo, facultatif)
+
+La même source propose aussi **Ciné**, l'appareil photo au rendu pellicule (voir `Cine/README.md`).
+Dans SideStore › Sources › « Sommeil et Ciné », installe Ciné. Ou le fichier `Cine.ipa` de la
+dernière version « Ciné 1.0.N » dans la page Releases du dépôt.
+
+Un identifiant Apple gratuit permet **3 apps actives**, SideStore compris : SideStore + Sommeil + Ciné.
+Supprime d'abord l'ancienne Sommeil installée avec Sideloadly si elle est encore là.
+
 ## 5. Tous les 7 jours : renouveler
 
 1. LocalDevVPN › **Connect**.
@@ -68,5 +77,7 @@ Automatisation › tous les jours à midi › action SideStore « Refresh All Ap
 - **SideStore n'arrive plus à renouveler après une mise à jour d'iOS** : le fichier d'appairage peut être à
   refaire. Rebranche l'iPhone au PC et relance iloader une fois.
 - **« Maximum App ID limit »** : un identifiant gratuit permet 10 identifiants d'app par semaine
-  (Sommeil en utilise 2 : l'app et son extension de notification). Attends quelques jours, ou retire
-  l'extension quand SideStore le propose (le rappel du soir marche quand même, en ouvrant l'app).
+  (Sommeil en utilise 2 : l'app et son extension de notification ; Ciné en utilise 1). Attends quelques
+  jours, ou retire l'extension quand SideStore le propose (le rappel du soir marche quand même, en
+  ouvrant l'app).
+- **« Maximum number of apps »** : 3 apps actives au plus avec un identifiant gratuit (SideStore compris).

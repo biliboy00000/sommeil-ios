@@ -1,0 +1,112 @@
+# Compilation de Ciné (appareil photo au rendu pellicule) sur un Mac de GitHub.
+# 1. Tests du rendu (FilmCore).
+# 2. Compilation de l'app pour iPhone, sans signature (SideStore signe avec ton identifiant Apple).
+# 3. Publication de Cine.ipa (version « cine-v1.0.N », pas marquée comme la dernière : le lien
+#    « latest » reste celui de Sommeil) et ajout de Ciné dans la source SideStore commune.
+name: Ciné
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cine/**'
+      - '.github/workflows/cine.yml'
+      - 'scripts/source_sidestore.py'
+  pull_request:
+    paths:
+      - 'Cine/**'
+      - '.github/workflows/cine.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests du rendu
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests unitaires de FilmCore
+        run: swift test --package-path Cine/Packages/FilmCore
+
+  app:
+    name: App iPhone (Ciné)
+    runs-on: macos-26
+    needs: tests
+    timeout-minutes: 40
+    # Une seule publication à la fois (Sommeil ou Ciné) : la source SideStore est commune.
+    concurrency:
+      group: publication-sidestore
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer XcodeGen
+        run: brew install xcodegen
+      - name: Générer le projet Xcode
+        working-directory: Cine
+        run: xcodegen generate
+      - name: Compiler pour iPhone (non signé)
+        run: |
+          xcodebuild -project Cine/Cine.xcodeproj -scheme Cine -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build-cine \
+            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build-cine.log 2>&1 || {
+              echo "::group::Erreurs de compilation"
+              grep -E "error:" build-cine.log | sort -u | head -80
+              echo "::endgroup::"
+              tail -60 build-cine.log
+              exit 1
+            }
+          echo "Avertissements : $(grep -cE ' warning:' build-cine.log || true)"
+          grep -E " warning:" build-cine.log | grep -v "/SourcePackages/" | sort -u | head -40 || true
+      - name: Fabriquer le fichier .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build-cine/Build/Products/Release-iphoneos/Cine.app Payload/
+          # Les noyaux Core Image du rendu doivent être dans l'app.
+          test -f Payload/Cine.app/default.metallib
+          ls -l Payload/Cine.app/default.metallib
+          plutil -p Payload/Cine.app/Info.plist | grep -E "CFBundleIdentifier|CFBundleDisplayName|UsageDescription"
+          zip -qry Cine.ipa Payload
+          ls -lh Cine.ipa
+      - name: Garder le journal de compilation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-compilation-cine
+          path: build-cine.log
+          if-no-files-found: ignore
+      - name: Garder l'app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cine-ipa
+          path: Cine.ipa
+      - name: Publier la version
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cine-v1.0.${{ github.run_number }}
+          name: Ciné 1.0.${{ github.run_number }}
+          make_latest: false
+          files: Cine.ipa
+          body: |
+            Version compilée automatiquement depuis ${{ github.sha }}.
+            À installer avec SideStore, directement sur l'iPhone (source « Sommeil et Ciné ») : voir Cine/README.md.
+      - name: Ajouter Ciné à la source SideStore
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DERNIERE=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          echo "Source mise à jour dans la version $DERNIERE"
+          gh release download "$DERNIERE" --repo "$GITHUB_REPOSITORY" --pattern source.json --output base.json 2>/dev/null \
+            || echo '{}' > base.json
+          python3 scripts/source_sidestore.py Payload/Cine.app Cine.ipa "cine-v1.0.${{ github.run_number }}" source.json --base base.json
+          gh release upload "$DERNIERE" source.json --repo "$GITHUB_REPOSITORY" --clobber
