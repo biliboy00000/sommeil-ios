@@ -12,6 +12,8 @@ on:
       - 'Cine/**'
       - '.github/workflows/cine.yml'
       - 'scripts/source_sidestore.py'
+      - 'scripts/source_actuelle.sh'
+      - 'scripts/completer_source.sh'
   pull_request:
     paths:
       - 'Cine/**'
@@ -104,9 +106,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          DERNIERE=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          DERNIERE=$(scripts/source_actuelle.sh base.json)
           echo "Source mise à jour dans la version $DERNIERE"
-          gh release download "$DERNIERE" --repo "$GITHUB_REPOSITORY" --pattern source.json --output base.json 2>/dev/null \
-            || echo '{}' > base.json
-          python3 scripts/source_sidestore.py Payload/Cine.app Cine.ipa "cine-v1.0.${{ github.run_number }}" source.json --base base.json
+          scripts/completer_source.sh base.json
+          # Sommeil doit rester dans la source : sinon on ne publie rien.
+          python3 scripts/source_sidestore.py Payload/Cine.app Cine.ipa "cine-v1.0.${{ github.run_number }}" source.json \
+            --base base.json --exiger com.suivisommeil.enregistreur
           gh release upload "$DERNIERE" source.json --repo "$GITHUB_REPOSITORY" --clobber

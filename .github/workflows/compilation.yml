@@ -87,10 +87,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # On garde l'entrée de Ciné de la source actuelle.
-          gh release download --repo "$GITHUB_REPOSITORY" --pattern source.json --output base.json 2>/dev/null \
-            || echo '{}' > base.json
-          python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.3.${{ github.run_number }}" source.json --base base.json
+          # On garde l'entrée de Ciné de la source actuelle (remise d'après sa dernière version si elle manque).
+          scripts/source_actuelle.sh base.json
+          scripts/completer_source.sh base.json
+          python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.3.${{ github.run_number }}" source.json \
+            --base base.json --exiger com.cine.pellicule
       - name: Garder le journal de compilation
         if: always()
         uses: actions/upload-artifact@v4

@@ -3,10 +3,11 @@
 Écrit la « source » SideStore (format des sources AltStore) de ce dépôt, pour que SideStore
 propose tout seul les mises à jour des apps : Sommeil et Ciné.
 
-    python3 scripts/source_sidestore.py <App.app> <App.ipa> <tag> <sortie.json> [--base <source.json>]
+    python3 scripts/source_sidestore.py <App.app> <App.ipa> <tag> <sortie.json> [--base <source.json>] [--exiger <identifiant>]
 
 L'app est reconnue par son identifiant (Info.plist). Avec --base, les autres apps de la source
 existante sont gardées : chaque compilation (Sommeil ou Ciné) ne remplace que sa propre entrée.
+Avec --exiger, le script s'arrête en erreur si cette app manque dans la source finale.
 
 Utilisé par la compilation automatique de GitHub, qui publie source.json avec la dernière version
 de Sommeil (« latest »). Lien à ajouter dans SideStore (onglet Sources, « + ») :
@@ -94,7 +95,7 @@ def lire_base(chemin):
         return []
 
 
-def construire(app, ipa, tag, sortie, base=None):
+def construire(app, ipa, tag, sortie, base=None, exiger=None):
     nouvelle = entree(app, ipa, tag)
     apps = {a["bundleIdentifier"]: a for a in lire_base(base)}
     apps[nouvelle["bundleIdentifier"]] = nouvelle
@@ -108,6 +109,8 @@ def construire(app, ipa, tag, sortie, base=None):
         "apps": [apps[i] for i in ORDRE if i in apps],
         "news": [],
     }
+    if exiger and exiger not in apps:
+        raise SystemExit("L'app %s manque dans la source : rien n'est écrit (source de base incomplète ?)" % exiger)
     with open(sortie, "w", encoding="utf-8") as f:
         json.dump(source, f, ensure_ascii=False, indent=2)
     for a in source["apps"]:
@@ -118,12 +121,13 @@ def construire(app, ipa, tag, sortie, base=None):
 
 if __name__ == "__main__":
     arguments = sys.argv[1:]
-    base = None
-    if "--base" in arguments:
-        i = arguments.index("--base")
-        base = arguments[i + 1] if i + 1 < len(arguments) else None
-        del arguments[i:i + 2]
+    options = {}
+    for nom in ("--base", "--exiger"):
+        if nom in arguments:
+            i = arguments.index(nom)
+            options[nom[2:]] = arguments[i + 1] if i + 1 < len(arguments) else None
+            del arguments[i:i + 2]
     if len(arguments) != 4:
         print(__doc__)
         sys.exit(1)
-    construire(*arguments, base=base)
+    construire(*arguments, **options)
