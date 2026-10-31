@@ -7,6 +7,7 @@ enum Palette {
     static let amber = Color(red: 1.0, green: 0.72, blue: 0.30)
     static let dim = Color.white.opacity(0.55)
     static let readout = Font.system(size: 12, weight: .medium, design: .monospaced)
+    static let record = Color(red: 1.0, green: 0.23, blue: 0.19)
 }
 
 /// Réglage choisi sous le viseur.
@@ -15,11 +16,11 @@ enum CameraControl: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    func title(_ mode: CaptureMode) -> String {
         switch self {
         case .ev: return "EXPO"
         case .iso: return "ISO"
-        case .shutter: return "VITESSE"
+        case .shutter: return mode == .video ? "OBTURAT." : "VITESSE"
         case .kelvin: return "BALANCE"
         case .focus: return "MAP"
         }
@@ -165,6 +166,7 @@ struct DialTicks: Shape {
 /// Un réglage sous le viseur : titre et valeur.
 struct ControlChip: View {
     let control: CameraControl
+    let mode: CaptureMode
     let value: String
     let isManual: Bool
     let isSelected: Bool
@@ -173,7 +175,7 @@ struct ControlChip: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 3) {
-                Text(control.title)
+                Text(control.title(mode))
                     .font(.system(size: 9, weight: .bold))
                     .tracking(1)
                     .foregroundStyle(isSelected ? Palette.amber : Palette.dim)
@@ -198,8 +200,10 @@ struct ControlChip: View {
     }
 }
 
-/// Bouton de déclenchement.
+/// Bouton de déclenchement : photo (blanc), ou enregistrement (rouge, carré pendant l'enregistrement).
 struct ShutterButton: View {
+    let mode: CaptureMode
+    let recording: Bool
     let busy: Bool
     let action: () -> Void
 
@@ -209,10 +213,16 @@ struct ShutterButton: View {
                 Circle()
                     .stroke(Color.white, lineWidth: 4)
                     .frame(width: 78, height: 78)
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 64, height: 64)
-                if busy {
+                if mode == .photo {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 64, height: 64)
+                } else {
+                    RoundedRectangle(cornerRadius: recording ? 8 : 32, style: .continuous)
+                        .fill(Palette.record)
+                        .frame(width: recording ? 32 : 64, height: recording ? 32 : 64)
+                }
+                if busy, !recording {
                     Circle()
                         .trim(from: 0, to: 0.25)
                         .stroke(Palette.amber, style: StrokeStyle(lineWidth: 4, lineCap: .round))
@@ -220,9 +230,11 @@ struct ShutterButton: View {
                         .modifier(Spinning())
                 }
             }
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: recording)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: mode)
         }
         .buttonStyle(ShutterStyle())
-        .accessibilityLabel("Prendre une photo")
+        .accessibilityLabel(mode == .photo ? "Prendre une photo" : (recording ? "Arrêter l'enregistrement" : "Filmer"))
     }
 }
 
@@ -267,8 +279,8 @@ struct Spinning: ViewModifier {
     }
 }
 
-/// Bandes noires du format choisi (le capteur fait du 4:3).
-/// Le grand côté du capteur suit toujours le grand côté de l'iPhone : les formats larges coupent le petit côté.
+/// Bandes noires du format choisi. Le grand côté du capteur suit toujours le grand côté de l'iPhone :
+/// les formats plus larges que le capteur coupent le petit côté, les plus étroits coupent le grand.
 struct FormatMatte: View {
     let format: AspectFormat
     let showGrid: Bool
@@ -276,23 +288,31 @@ struct FormatMatte: View {
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width, height = geometry.size.height
-            let cropWidth = min(width, height / format.ratio)
+            let crop = format.crop(width: Double(width), height: Double(height))
+            let cropWidth = CGFloat(crop.width), cropHeight = CGFloat(crop.height)
             let side = max(0, (width - cropWidth) / 2)
+            let band = max(0, (height - cropHeight) / 2)
             ZStack {
                 HStack(spacing: 0) {
                     Color.black.opacity(0.66).frame(width: side)
                     Spacer(minLength: 0)
                     Color.black.opacity(0.66).frame(width: side)
                 }
-                if side > 0.5 {
+                VStack(spacing: 0) {
+                    Color.black.opacity(0.66).frame(height: band)
+                    Spacer(minLength: 0)
+                    Color.black.opacity(0.66).frame(height: band)
+                }
+                .padding(.horizontal, side)
+                if side > 0.5 || band > 0.5 {
                     Rectangle()
                         .stroke(Color.white.opacity(0.35), lineWidth: 0.5)
-                        .frame(width: cropWidth, height: height)
+                        .frame(width: cropWidth, height: cropHeight)
                 }
                 if showGrid {
                     ThirdsGrid()
                         .stroke(Color.white.opacity(0.28), lineWidth: 0.5)
-                        .frame(width: cropWidth, height: height)
+                        .frame(width: cropWidth, height: cropHeight)
                 }
             }
             .frame(width: width, height: height)
@@ -348,7 +368,7 @@ struct FocusReticle: View {
     }
 }
 
-/// Bouton des boutons de volume (et du bouton Commande de l'appareil photo) : déclenche une photo. iOS 18 et plus.
+/// Boutons de volume (et bouton Commande de l'appareil photo) : déclenchent comme le gros bouton. iOS 18 et plus.
 struct HardwareShutter: ViewModifier {
     let action: () -> Void
 
@@ -360,5 +380,218 @@ struct HardwareShutter: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Sélecteur PHOTO / VIDÉO (au-dessus du déclencheur).
+struct ModeSwitcher: View {
+    let mode: CaptureMode
+    let disabled: Bool
+    let select: (CaptureMode) -> Void
+
+    var body: some View {
+        HStack(spacing: 22) {
+            item(.photo, "PHOTO")
+            item(.video, "VIDÉO")
+        }
+        .font(.system(size: 13, weight: .semibold))
+        .tracking(1.2)
+        .opacity(disabled ? 0.35 : 1)
+        .allowsHitTesting(!disabled)
+        .gesture(DragGesture(minimumDistance: 20).onEnded { value in
+            if value.translation.width < -20 { select(.video) }
+            if value.translation.width > 20 { select(.photo) }
+        })
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: mode)
+    }
+
+    private func item(_ target: CaptureMode, _ title: String) -> some View {
+        Button {
+            select(target)
+        } label: {
+            Text(title)
+                .foregroundStyle(mode == target ? Palette.amber : Palette.dim)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Pastille d'enregistrement : point rouge clignotant et code temporel.
+struct RecordingBadge: View {
+    let start: Date?
+    let fps: Int
+    let slowMotion: Bool
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1.0 / Double(max(fps, 1)))) { context in
+            let elapsed = start.map { context.date.timeIntervalSince($0) } ?? 0
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Palette.record)
+                    .frame(width: 8, height: 8)
+                    .opacity(Int(elapsed * 2) % 2 == 0 ? 1 : 0.25)
+                Text(Timecode.text(seconds: elapsed, fps: fps))
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .monospacedDigit()
+                if slowMotion {
+                    Text("RALENTI")
+                        .font(.system(size: 9, weight: .heavy))
+                        .tracking(0.8)
+                }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Palette.record.opacity(0.85)))
+        }
+    }
+}
+
+/// Niveau sonore du micro (dB, −160 à 0).
+struct AudioMeter: View {
+    let level: Double
+
+    var body: some View {
+        let fraction = min(max((level + 50) / 50, 0), 1)
+        HStack(spacing: 4) {
+            Image(systemName: "mic.fill")
+                .font(.system(size: 9, weight: .bold))
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.2))
+                    Capsule()
+                        .fill(level > -3 ? Palette.record : (level > -12 ? Palette.amber : Color.green))
+                        .frame(width: geometry.size.width * fraction)
+                }
+            }
+            .frame(width: 44, height: 4)
+        }
+        .foregroundStyle(.white.opacity(0.85))
+        .animation(.linear(duration: 0.15), value: fraction)
+    }
+}
+
+/// Histogramme de la luminance (64 cases).
+struct HistogramView: View {
+    let bins: [Float]
+
+    var body: some View {
+        Canvas { context, size in
+            guard bins.count > 1 else { return }
+            var path = Path()
+            path.move(to: CGPoint(x: 0, y: size.height))
+            for (i, value) in bins.enumerated() {
+                let x = size.width * CGFloat(i) / CGFloat(bins.count - 1)
+                let y = size.height * (1 - CGFloat(min(max(value, 0), 1)))
+                path.addLine(to: CGPoint(x: x, y: y))
+            }
+            path.addLine(to: CGPoint(x: size.width, y: size.height))
+            path.closeSubpath()
+            context.fill(path, with: .color(.white.opacity(0.55)))
+            // Zone des blancs.
+            let clip = CGRect(x: size.width * 0.95, y: 0, width: size.width * 0.05, height: size.height)
+            context.fill(Path(clip), with: .color(Palette.record.opacity(0.25)))
+        }
+        .frame(width: 96, height: 42)
+        .padding(6)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.black.opacity(0.45)))
+        .allowsHitTesting(false)
+    }
+}
+
+/// Niveau : un trait qui reste parallèle à l'horizon, ambre quand l'iPhone est droit.
+struct LevelIndicator: View {
+    let roll: Double
+    let baseRotation: Double
+
+    var body: some View {
+        let level = abs(roll) < 1
+        ZStack {
+            Capsule()
+                .fill(level ? Palette.amber : Color.white.opacity(0.8))
+                .frame(width: 120, height: level ? 2 : 1.5)
+                .rotationEffect(.degrees(baseRotation - roll))
+            Capsule()
+                .fill(Color.white.opacity(0.5))
+                .frame(width: 34, height: 1.5)
+                .rotationEffect(.degrees(baseRotation))
+                .offset(x: 0)
+                .opacity(level ? 0 : 1)
+        }
+        .animation(.easeOut(duration: 0.12), value: roll)
+        .allowsHitTesting(false)
+    }
+}
+
+/// Bandeau des pellicules (au bas du viseur).
+struct StockStrip: View {
+    let selected: FilmStock
+    let showLook: Bool
+    let select: (FilmStock) -> Void
+    let setShowLook: (Bool) -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(selected.summary)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .padding(.horizontal, 12)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(FilmStock.allCases, id: \.self) { stock in
+                        Button {
+                            select(stock)
+                        } label: {
+                            VStack(spacing: 3) {
+                                Text(stock.code)
+                                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                                Text(stock.label)
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(stock == selected ? .black : .white)
+                            .frame(width: 78, height: 46)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(stock == selected ? Palette.amber : Color.white.opacity(0.14)))
+                        }
+                        .buttonStyle(PressableStyle())
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            // Maintenir pour voir l'image sans le rendu.
+            Text(showLook ? "Maintenir ici pour comparer avec l'image brute" : "IMAGE BRUTE")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(showLook ? Palette.dim : Palette.amber)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Color.white.opacity(0.1)))
+                .onLongPressGesture(minimumDuration: 0.05, maximumDistance: 40, perform: {}, onPressingChanged: { pressing in
+                    setShowLook(!pressing)
+                })
+        }
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.black.opacity(0.6)))
+    }
+}
+
+/// Compte à rebours du retardateur.
+struct CountdownView: View {
+    let value: Int
+    let rotation: Angle
+
+    var body: some View {
+        Text("\(value)")
+            .font(.system(size: 96, weight: .thin, design: .rounded))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.5), radius: 8)
+            .rotationEffect(rotation)
+            .contentTransition(.numericText(countsDown: true))
+            .animation(.snappy, value: value)
+            .allowsHitTesting(false)
     }
 }

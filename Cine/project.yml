@@ -9,7 +9,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0.0"
+    MARKETING_VERSION: "1.1.0"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 
@@ -57,7 +57,11 @@ targets:
         NSCameraUsageDescription: >-
           Ciné utilise l'appareil photo pour prendre des photos avec un rendu pellicule cinéma.
         NSPhotoLibraryAddUsageDescription: >-
-          Ciné enregistre tes photos dans l'app Photos.
+          Ciné enregistre tes photos et tes vidéos dans l'app Photos.
+        NSMicrophoneUsageDescription: >-
+          Le micro enregistre le son de tes vidéos.
+        NSLocationWhenInUseUsageDescription: >-
+          Si tu actives l'option « Lieu », Ciné ajoute l'endroit de la prise de vue à tes photos et vidéos.
         # Le journal (journal.txt) et les dernières photos apparaissent dans l'app Fichiers (« Sur mon iPhone › Ciné »).
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

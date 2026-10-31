@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreImage
 import ImageIO
 import Photos
@@ -5,7 +6,7 @@ import UIKit
 import FilmCore
 
 /// Développe les photos : RAW du capteur → rendu pellicule → HEIF 10 bits (Display P3),
-/// puis les range dans Photos et dans la pellicule de l'app.
+/// puis les range dans Photos et dans la pellicule de l'app. Range aussi les vidéos enregistrées.
 /// Les données brutes sont d'abord écrites sur le disque : une photo n'est jamais perdue,
 /// même si l'app est fermée pendant le développement (elle reprend à la prochaine ouverture).
 final class Developer: ObservableObject {
@@ -16,6 +17,7 @@ final class Developer: ObservableObject {
     var onMessage: ((String) -> Void)?
 
     private let queue = DispatchQueue(label: "cine.developpement", qos: .userInitiated)
+    private let videoQueue = DispatchQueue(label: "cine.videos", qos: .userInitiated)
     private let waiting: URL
     private let gallery: Gallery
     private var known = Set<String>()        // sur `queue`
@@ -34,6 +36,9 @@ final class Developer: ObservableObject {
         waiting = documents.appendingPathComponent("EnAttente", isDirectory: true)
         try? FileManager.default.createDirectory(at: waiting, withIntermediateDirectories: true)
     }
+
+    /// Dossier des vidéos en cours d'enregistrement.
+    var recordingsDirectory: URL { waiting }
 
     func submit(_ request: ShotRequest, data: Data) {
         DispatchQueue.main.async { self.pending += 1 }
@@ -90,11 +95,13 @@ final class Developer: ObservableObject {
         do {
             let result = try Self.develop(request, data: data)
             guard isActive else { throw DevelopError.interrupted }
-            let item = try gallery.write(id: request.id, date: request.date, heif: result.heif, thumbnail: result.thumbnail)
-            let saved = Self.saveToPhotos(heif: result.heif, raw: request.keepRaw && request.isRaw ? data : nil)
+            let item = try gallery.writePhoto(id: request.id, date: request.date, heif: result.heif, thumbnail: result.thumbnail)
+            let saved = Self.saveToPhotos(heif: result.heif, raw: request.keepRaw && request.isRaw ? data : nil,
+                                          location: request.location)
             forget(request.id)
-            Log.shared.add(String(format: "Photo %@ développée en %.1f s (%@, gain %.2f)%@", request.id,
-                                  Date().timeIntervalSince(started), request.isRaw ? "RAW" : "traitée", result.gain,
+            Log.shared.add(String(format: "Photo %@ (%@) développée en %.1f s (%@, gain %.2f)%@", request.id,
+                                  request.renderSettings.stock.code, Date().timeIntervalSince(started),
+                                  request.isRaw ? "RAW" : "traitée", result.gain,
                                   saved == nil ? "" : " — Photos : \(saved!)"))
             DispatchQueue.main.async {
                 self.pending = max(0, self.pending - 1)
@@ -110,7 +117,7 @@ final class Developer: ObservableObject {
                 // Sera reprise à la prochaine ouverture.
             } else if retry.attempts >= 3 {
                 // Dernier recours : on garde au moins le fichier du capteur dans Photos.
-                let fallback = request.isRaw ? Self.saveRawOnly(data) : Self.saveToPhotos(heif: data, raw: nil)
+                let fallback = request.isRaw ? Self.saveRawOnly(data) : Self.saveToPhotos(heif: data, raw: nil, location: request.location)
                 forget(request.id)
                 DispatchQueue.main.async {
                     self.onMessage?(fallback == nil ? "Développement impossible : le fichier brut est dans Photos."
@@ -135,7 +142,7 @@ final class Developer: ObservableObject {
         }
     }
 
-    struct Result {
+    struct Developed {
         var heif: Data
         var thumbnail: Data?
         var gain: Double
@@ -143,13 +150,10 @@ final class Developer: ObservableObject {
 
     // MARK: Développement
 
-    static func develop(_ request: ShotRequest, data: Data) throws -> Result {
+    static func develop(_ request: ShotRequest, data: Data) throws -> Developed {
         let orientation = HeldOrientation(rawValue: request.orientation) ?? .portrait
         let format = AspectFormat(rawValue: request.format) ?? .standard
-        let choices = RenderChoices(grain: GrainLevel(rawValue: request.grain) ?? .fine,
-                                    halation: HalationLevel(rawValue: request.halation) ?? .soft,
-                                    vignette: request.vignette)
-        var look = choices.look
+        var look = request.renderSettings.look
         var image: CIImage
         let metadata: [String: Any]
         var gain = 1.0
@@ -195,13 +199,14 @@ final class Developer: ObservableObject {
             gain = ExposureMatch.gain(previewLogLuminance: request.previewLogLuminance,
                                       rawLogLuminance: FilmPipeline.logLuminance(image), previewContrast: 1.25)
         }
-        var final = FilmPipeline.render(image, look: look, exposure: gain, vignette: request.vignette,
-                                        grainOffset: CGPoint(x: Int.random(in: 0..<4096), y: Int.random(in: 0..<4096)))
-
-        let crop = format.crop(width: Double(final.extent.width), height: Double(final.extent.height))
+        // Recadrage avant le rendu : vignettage et flares suivent le cadre final.
+        let crop = format.crop(width: Double(image.extent.width), height: Double(image.extent.height))
         let rect = CGRect(x: crop.x, y: crop.y, width: crop.width, height: crop.height)
-        final = final.cropped(to: rect).transformed(by: CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
-        final = final.settingProperties(cleanMetadata(metadata, width: Int(rect.width), height: Int(rect.height)))
+        image = image.cropped(to: rect).transformed(by: CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
+        var final = FilmPipeline.render(image, look: look, exposure: gain,
+                                        grainOffset: CGPoint(x: Int.random(in: 0..<4096), y: Int.random(in: 0..<4096)))
+        final = final.settingProperties(cleanMetadata(metadata, width: Int(rect.width), height: Int(rect.height),
+                                                      location: request.location))
 
         let quality = CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String)
         let heif: Data
@@ -218,11 +223,11 @@ final class Developer: ObservableObject {
         let small = final.transformed(by: CGAffineTransform(scaleX: 600 / side, y: 600 / side))
         let thumbnail = FilmPipeline.context.jpegRepresentation(of: small, colorSpace: FilmPipeline.displayP3,
                                                                 options: [quality: 0.8])
-        return Result(heif: heif, thumbnail: thumbnail, gain: gain)
+        return Developed(heif: heif, thumbnail: thumbnail, gain: gain)
     }
 
-    /// L'image est déjà redressée et recadrée : orientation 1, nouvelles dimensions, logiciel « Ciné ».
-    static func cleanMetadata(_ source: [String: Any], width: Int, height: Int) -> [String: Any] {
+    /// L'image est déjà redressée et recadrée : orientation 1, nouvelles dimensions, logiciel « Ciné », lieu.
+    static func cleanMetadata(_ source: [String: Any], width: Int, height: Int, location: LocationStamp?) -> [String: Any] {
         var properties = source
         properties[kCGImagePropertyOrientation as String] = 1
         properties.removeValue(forKey: kCGImagePropertyDNGDictionary as String)
@@ -236,18 +241,68 @@ final class Developer: ObservableObject {
         exif[kCGImagePropertyExifPixelXDimension as String] = width
         exif[kCGImagePropertyExifPixelYDimension as String] = height
         properties[kCGImagePropertyExifDictionary as String] = exif
+        if let location {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            formatter.dateFormat = "yyyy:MM:dd"
+            let time = DateFormatter()
+            time.locale = Locale(identifier: "en_US_POSIX")
+            time.timeZone = TimeZone(identifier: "UTC")
+            time.dateFormat = "HH:mm:ss.SS"
+            properties[kCGImagePropertyGPSDictionary as String] = [
+                kCGImagePropertyGPSLatitude as String: abs(location.latitude),
+                kCGImagePropertyGPSLatitudeRef as String: location.latitude >= 0 ? "N" : "S",
+                kCGImagePropertyGPSLongitude as String: abs(location.longitude),
+                kCGImagePropertyGPSLongitudeRef as String: location.longitude >= 0 ? "E" : "W",
+                kCGImagePropertyGPSAltitude as String: abs(location.altitude),
+                kCGImagePropertyGPSAltitudeRef as String: location.altitude >= 0 ? 0 : 1,
+                kCGImagePropertyGPSHPositioningError as String: location.accuracy,
+                kCGImagePropertyGPSDateStamp as String: formatter.string(from: location.timestamp),
+                kCGImagePropertyGPSTimeStamp as String: time.string(from: location.timestamp),
+            ] as [String: Any]
+        }
         return properties
+    }
+
+    // MARK: Vidéos
+
+    /// Range une vidéo enregistrée : dans Photos (avec le lieu), et dans la pellicule de l'app.
+    func storeVideo(_ request: RecordingRequest, file: URL, stats: RecordingStats) {
+        DispatchQueue.main.async { self.pending += 1 }
+        videoQueue.async {
+            let asset = AVURLAsset(url: file)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 600, height: 600)
+            var thumbnail: Data?
+            if let image = try? generator.copyCGImage(at: CMTime(value: 1, timescale: 10), actualTime: nil) {
+                thumbnail = UIImage(cgImage: image).jpegData(compressionQuality: 0.8)
+            }
+            let saved = Self.saveVideoToPhotos(file, location: request.location)
+            let item = try? self.gallery.writeVideo(id: request.id, date: request.date, movie: file, thumbnail: thumbnail,
+                                                    duration: stats.duration)
+            Log.shared.add(String(format: "Vidéo %@ : %.1f s, %d images, %d perdues%@", request.id, stats.duration,
+                                  stats.frames, stats.dropped, saved == nil ? "" : " — Photos : \(saved!)"))
+            DispatchQueue.main.async {
+                self.pending = max(0, self.pending - 1)
+                if let item { self.onDeveloped?(item) }
+                if let saved {
+                    self.onMessage?("Vidéo gardée dans Ciné, mais pas dans Photos : \(saved)")
+                } else if stats.frames > 0, Double(stats.dropped) > Double(stats.frames) * 0.05 {
+                    self.onMessage?("Des images ont été perdues (\(stats.dropped)) : essaie en HD ou à 24 i/s.")
+                }
+            }
+        }
     }
 
     // MARK: Photos
 
     /// Range la photo dans Photos (avec le RAW en fichier associé si demandé). Renvoie nil si c'est fait,
     /// sinon la raison de l'échec.
-    static func saveToPhotos(heif: Data, raw: Data?) -> String? {
+    static func saveToPhotos(heif: Data, raw: Data?, location: LocationStamp?) -> String? {
         guard authorizePhotos() else { return "accès à Photos refusé (Réglages › Ciné › Photos)" }
-        var failure: String?
-        let done = DispatchSemaphore(value: 0)
-        PHPhotoLibrary.shared().performChanges({
+        return perform {
             let creation = PHAssetCreationRequest.forAsset()
             let main = PHAssetResourceCreationOptions()
             main.uniformTypeIdentifier = "public.heic"
@@ -257,23 +312,34 @@ final class Developer: ObservableObject {
                 options.uniformTypeIdentifier = "com.adobe.raw-image"
                 creation.addResource(with: .alternatePhoto, data: raw, options: options)
             }
-        }, completionHandler: { success, error in
-            if !success { failure = error?.localizedDescription ?? "erreur inconnue" }
-            done.signal()
-        })
-        done.wait()
-        return failure
+            if let location { creation.location = location.location }
+        }
     }
 
     static func saveRawOnly(_ raw: Data) -> String? {
         guard authorizePhotos() else { return "accès à Photos refusé" }
-        var failure: String?
-        let done = DispatchSemaphore(value: 0)
-        PHPhotoLibrary.shared().performChanges({
+        return perform {
             let options = PHAssetResourceCreationOptions()
             options.uniformTypeIdentifier = "com.adobe.raw-image"
             PHAssetCreationRequest.forAsset().addResource(with: .photo, data: raw, options: options)
-        }, completionHandler: { success, error in
+        }
+    }
+
+    static func saveVideoToPhotos(_ file: URL, location: LocationStamp?) -> String? {
+        guard authorizePhotos() else { return "accès à Photos refusé (Réglages › Ciné › Photos)" }
+        return perform {
+            let creation = PHAssetCreationRequest.forAsset()
+            let options = PHAssetResourceCreationOptions()
+            options.shouldMoveFile = false
+            creation.addResource(with: .video, fileURL: file, options: options)
+            if let location { creation.location = location.location }
+        }
+    }
+
+    private static func perform(_ changes: @escaping () -> Void) -> String? {
+        var failure: String?
+        let done = DispatchSemaphore(value: 0)
+        PHPhotoLibrary.shared().performChanges(changes, completionHandler: { success, error in
             if !success { failure = error?.localizedDescription ?? "erreur inconnue" }
             done.signal()
         })

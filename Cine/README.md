@@ -1,59 +1,81 @@
-# Ciné — photos RAW au rendu pellicule cinéma
+# Ciné — appareil photo et caméra au rendu pellicule cinéma
 
-Appareil photo pour iPhone qui **ne passe pas par le traitement d'iOS** (Smart HDR, Deep Fusion,
-renforcement de netteté, tone mapping local). Ciné récupère les données brutes du capteur (RAW Bayer)
-et les développe lui-même avec un rendu **pellicule cinéma** :
+Appareil photo et caméra pour iPhone qui **ne passent pas par le traitement d'iOS** (Smart HDR, Deep Fusion,
+renforcement de netteté, tone mapping local). En photo, Ciné récupère les données brutes du capteur (RAW
+Bayer) et les développe lui-même ; en vidéo, chaque image passe dans le même rendu avant d'être enregistrée.
+Le viseur montre ce rendu **en direct**.
 
-- couleurs douces, saturation retenue, verts tirés vers l'olive ;
-- peaux chaudes, hautes lumières légèrement chaudes, ombres légèrement froides ;
-- noirs laiteux (jamais d'un noir pur) et hautes lumières qui s'arrondissent au lieu de couper ;
-- halation (halo rouge orangé autour des lumières fortes) et léger voile lumineux ;
-- grain fin, surtout dans les tons moyens ; vignettage léger.
+## Pellicules
 
-Le viseur montre ce rendu **en direct**, avant chaque photo. Grain, halation, vignettage et format se
-choisissent avant de déclencher (bouton en haut à gauche).
+| Code | Pellicule | Rendu |
+|---|---|---|
+| 250D | Pellicule cinéma | Couleurs douces, peaux chaudes, noirs laiteux (le rendu d'origine) |
+| 500T | Nuit tungstène | Froide, ombres bleu-vert, halation forte, plus de grain |
+| ETR | Eterna | Contraste bas, couleurs retenues, verts éteints |
+| BBP | Sans blanchiment | Couleurs lavées, contraste fort, noirs denses |
+| N&B | Noir et blanc | Contraste franc, grain présent (type Double-X) |
+
+Bouton « pellicule » en bas à droite : bandeau des pellicules, et « maintenir pour comparer » avec l'image brute.
+
+**Effets optiques** (Réglages) : grain (sans, fin, marqué), halation (halo rouge orangé autour des lumières),
+diffusion façon filtre Black Pro-Mist (1/8, 1/4, 1/2), flares anamorphiques (traits bleutés depuis les
+lumières vives), vignettage.
+
+## Vidéo cinéma
+
+- 24, 25 ou 30 images par seconde, en HD ou en 4K, et **ralenti** ×2 (48 → 24) ou ×2,5 (60 → 24).
+- **Obturateur en degrés** : 180° par défaut (1/48 s à 24 i/s, le flou de mouvement du cinéma), l'ISO
+  s'adapte tout seul à la lumière. Ou tout en manuel (ISO, obturateur), ou tout en automatique.
+- Formats 16:9, 1,85:1, 2,39:1 (Scope), 4:3, 3:2 : l'image enregistrée a vraiment ces proportions.
+- Stabilisation cinéma, son du micro (avec vumètre), code temporel, cadre rouge pendant l'enregistrement.
+- Fichier HEVC (BT.709) avec le rendu pellicule déjà appliqué, rangé dans Photos (et les 3 dernières vidéos
+  dans Ciné).
+- En France, sous des lampes, 25 i/s évite le scintillement.
+
+## Visée
+
+Zébras (zones qui seront blanches), focus peaking (contours nets en ambre), histogramme, niveau, grille des
+tiers. Ces outils n'apparaissent jamais sur les photos ni les vidéos.
 
 ## Utilisation
 
-- **Déclencher** : gros bouton blanc, ou boutons de volume (iOS 18 et plus).
+- **PHOTO / VIDÉO** au-dessus du déclencheur (ou glisser dessus).
+- **Déclencher / filmer** : gros bouton, ou boutons de volume (iOS 18 et plus). **Retardateur** 3 ou 10 s
+  (bouton en haut à gauche).
 - **Mise au point** : toucher le viseur. **Appui long** : exposition et mise au point verrouillées.
-- **Objectifs** : pastilles 0,5× / 1× / 3× (selon l'iPhone), en bas du viseur. Ce sont les vrais
-  objectifs, sans recadrage numérique.
-- **Réglages manuels** (sous le viseur) : EXPO (correction ±3), ISO, VITESSE (dont 1/48 et 1/50, le
-  flou de mouvement du cinéma), BALANCE (kelvins), MAP (mise au point manuelle). Touche un réglage, fais
-  glisser la molette ; **AUTO** pour revenir en automatique. ISO et vitesse passent ensemble en manuel.
-- **Format** (en haut à droite) : 4:3 (capteur entier), 3:2, 16:9, 1,85:1, 2,39:1 (Scope). Tiens
-  l'iPhone à l'horizontale pour un cadre de cinéma.
-- **FILM / BRUT** (en bas à droite) : compare l'aperçu avec et sans le rendu.
-- **Vignette** (en bas à gauche) : les 30 dernières photos, avec zoom et partage. Toutes les photos
-  sont aussi dans l'app **Photos** (HEIF 10 bits, Display P3), avec le RAW (DNG) joint si l'option
-  « Garder aussi le RAW » est activée.
+- **Objectifs** : pastilles 0,5× / 1× / 3× (les vrais objectifs, sans recadrage numérique).
+- **Réglages manuels** sous le viseur : EXPO, ISO, VITESSE (ou OBTURATEUR en vidéo), BALANCE, MAP.
+  Touche un réglage, fais glisser la molette ; **AUTO** pour revenir en automatique.
+- **Format** en haut à droite (retenu séparément en photo et en vidéo). Tiens l'iPhone à l'horizontale pour
+  un cadre de cinéma.
+- **Vignette** en bas à gauche : les dernières photos et vidéos (zoom, lecture, partage, retrait de Ciné).
+- **Lieu** (option) : ajouté aux photos et aux vidéos.
 
 ## Comment c'est fait
 
-1. **Capture** : `AVCapturePhotoOutput` en RAW Bayer (pas ProRAW, qui est déjà traité), 12 Mpx,
-   objectifs physiques. Si un objectif ne donne pas de RAW, Ciné prend une photo HEIF en mode rapide
-   (le moins de traitement possible) et l'indique (« HEIF » en haut de l'écran).
-2. **Développement** (`Developer.swift`) : `CIRAWFilter` sans courbe d'Apple (`boostAmount` 0), sans
-   tone mapping local ni netteté, débruitage modéré selon l'ISO, correction de l'objectif. L'exposition
-   est calée sur ce que montrait l'aperçu au moment de déclencher.
-3. **Rendu** (`FilmKernels.metal`, mêmes formules que `Packages/FilmCore/Sources/FilmCore/FilmLook.swift`) :
-   halation → courbe de pellicule canal par canal (sigmoïde en stops : gris moyen à 0,42, +2,5 stops à
-   0,82, noirs à 0,03) → couleurs → grain → vignettage → recadrage au format.
-4. **Enregistrement** : HEIF 10 bits dans Photos et dans l'app. Les données du capteur sont d'abord
-   écrites sur l'iPhone : si l'app est fermée pendant le développement, la photo est reprise à la
-   prochaine ouverture (rien n'est perdu).
+1. **Photo** : `AVCapturePhotoOutput` en RAW Bayer (pas ProRAW), 12 Mpx. Développement avec `CIRAWFilter`
+   sans courbe d'Apple (`boostAmount` 0), débruitage modéré selon l'ISO ; l'exposition est calée sur ce que
+   montrait l'aperçu. Si un objectif ne donne pas de RAW, photo HEIF en mode rapide (« HEIF » à l'écran).
+2. **Vidéo** : format du capteur choisi pour la définition et la cadence, sans HDR vidéo ni courbe globale ;
+   chaque image est rendue (`FrameProcessor.swift`) puis encodée par `AVAssetWriter` (`VideoRecorder.swift`).
+3. **Rendu** (`FilmKernels.metal`, mêmes formules que `Packages/FilmCore`) : effets optiques en lumière
+   linéaire → courbe de la pellicule canal par canal → couleurs → grain → vignettage.
+4. **Enregistrement** : photos en HEIF 10 bits (Display P3). Les données du capteur sont d'abord écrites sur
+   l'iPhone : si l'app est fermée pendant un développement, la photo est reprise à la prochaine ouverture.
 
-`Packages/FilmCore` contient la version de référence du rendu et les calculs de l'appareil (formats,
-crans d'ISO et de vitesse, orientation, objectifs), avec leurs tests (`swift test`, aussi sous Linux).
+`Packages/FilmCore` contient la version de référence des pellicules et tous les calculs (formats, crans,
+obturateur en degrés, cadences, choix du format vidéo, ISO automatique à obturateur fixe, niveau, code
+temporel), avec leurs tests (`swift test`, aussi sous Linux).
+
+Journal de l'app : app Fichiers › Sur mon iPhone › Ciné › journal.txt.
 
 ## Installation
 
 Avec SideStore, comme Sommeil (voir `../INSTALLATION.md`) : la source « Sommeil et Ciné »
 (`https://github.com/biliboy00000/sommeil-ios/releases/latest/download/source.json`) propose les deux
-apps. Ou directement le fichier : page **Releases** du dépôt, version « Ciné 1.0.N », `Cine.ipa`.
+apps. Ou directement le fichier : page **Releases** du dépôt, version « Ciné 1.1.N », `Cine.ipa`.
 
 **Limite d'un identifiant Apple gratuit : 3 apps actives** (SideStore compte pour une). SideStore +
-Sommeil + Ciné = 3 : il faut que l'ancienne Sommeil installée avec Sideloadly soit supprimée.
+Sommeil + Ciné = 3.
 
 La compilation automatique est dans `.github/workflows/cine.yml`.

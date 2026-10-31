@@ -1,6 +1,6 @@
-// Noyaux Core Image du rendu « Pellicule cinéma ».
-// Même formule, mêmes constantes que FilmCore/FilmLook.swift (la version Swift est testée).
-// Compilés avec -fcikernel (compilateur) et -cikernel (éditeur de liens) : voir Cine/project.yml.
+// Noyaux Core Image de Ciné.
+// Mêmes formules, mêmes constantes que FilmCore/FilmLook.swift (la version Swift est testée).
+// Compilés avec -fcikernel (compilateur et éditeur de liens) : voir Cine/project.yml.
 // Core Image travaille en lumière linéaire (espace de travail : Display P3 linéaire étendu).
 
 #include <metal_stdlib>
@@ -28,11 +28,17 @@ namespace film {
         float s = 1.0 / (1.0 + exp(-k * (x - x0)));
         return lift + (white - lift) * s;
     }
+
+    /// Luminance « affichage » (pour la mise au point) d'un point de l'image.
+    inline float edgeLuma(coreimage::sampler s, float2 p) {
+        float4 c = s.sample(s.transform(p));
+        return sqrt(max(luma(c.rgb), 0.0));
+    }
 }
 
 extern "C" { namespace coreimage {
 
-    /// Courbe de pellicule, saturation retenue, verts olive, ombres froides, hautes lumières chaudes.
+    /// Courbe de pellicule, saturation, verts olive, teintes des ombres et des hautes lumières.
     float4 filmLook(sample_t s, float3 balance, float3 contrast, float3 pivot, float lift, float white,
                     float saturation, float greenShift, float3 shadowTint, float3 highlightTint) {
         float3 c = max(s.rgb, float3(0.0)) * balance;
@@ -50,7 +56,7 @@ extern "C" { namespace coreimage {
         return float4(film::toLinear3(y), 1.0);
     }
 
-    /// Lumière au-dessus du seuil (avec sa couleur) : source des halos.
+    /// Lumière au-dessus du seuil (avec sa couleur) : source des effets optiques.
     float4 glowMask(sample_t s, float threshold, float maxExcess) {
         float3 c = max(s.rgb, float3(0.0));
         float l = film::luma(c);
@@ -58,9 +64,13 @@ extern "C" { namespace coreimage {
         return float4(c * (excess / max(l, 1e-4)), 1.0);
     }
 
-    /// Halation (halo serré, rouge orangé) et diffusion (voile large).
-    float4 addGlow(sample_t s, sample_t halo, sample_t bloom, float3 haloTint, float haloAmount, float bloomAmount) {
-        float3 c = s.rgb + haloTint * (film::luma(halo.rgb) * haloAmount) + bloom.rgb * bloomAmount;
+    /// Halation (halo serré, rouge orangé), diffusion (voile large) et flares anamorphiques (bleutés, compressés).
+    float4 addGlow(sample_t s, sample_t halo, sample_t mist, sample_t streak,
+                   float3 haloTint, float haloAmount, float mistAmount,
+                   float3 streakTint, float streakAmount, float streakGain) {
+        float flare = 1.0 - exp(-max(film::luma(streak.rgb) * streakGain, 0.0));
+        float3 c = s.rgb + haloTint * (film::luma(halo.rgb) * haloAmount) + mist.rgb * mistAmount
+                 + streakTint * (flare * streakAmount);
         return float4(c, 1.0);
     }
 
@@ -83,5 +93,36 @@ extern "C" { namespace coreimage {
     float4 logLuminance(sample_t s) {
         float v = log(max(film::luma(max(s.rgb, float3(0.0))), 1e-4));
         return float4(v, v, v, 1.0);
+    }
+
+    /// Zébras : rayures sur les zones presque blanches (valeurs d'affichage au-dessus du seuil).
+    float4 zebra(sample_t s, float threshold, float period, destination dest) {
+        float3 e = film::toDisplay3(s.rgb);
+        float2 p = dest.coord();
+        float stripe = fract((p.x + p.y) / period);
+        if (film::luma(e) > threshold && stripe < 0.5) {
+            e = mix(e, float3(0.08), 0.75);
+        }
+        return float4(film::toLinear3(e), 1.0);
+    }
+
+    /// Focus peaking : les contours nets de `source` (avant rendu, donc sans grain) colorés sur `image`.
+    float4 focusPeaking(coreimage::sampler source, coreimage::sampler image, float threshold, float3 color,
+                        coreimage::destination dest) {
+        float2 p = dest.coord();
+        float tl = film::edgeLuma(source, p + float2(-1.0, 1.0));
+        float t = film::edgeLuma(source, p + float2(0.0, 1.0));
+        float tr = film::edgeLuma(source, p + float2(1.0, 1.0));
+        float l = film::edgeLuma(source, p + float2(-1.0, 0.0));
+        float r = film::edgeLuma(source, p + float2(1.0, 0.0));
+        float bl = film::edgeLuma(source, p + float2(-1.0, -1.0));
+        float b = film::edgeLuma(source, p + float2(0.0, -1.0));
+        float br = film::edgeLuma(source, p + float2(1.0, -1.0));
+        float gx = (tr + 2.0 * r + br) - (tl + 2.0 * l + bl);
+        float gy = (tl + 2.0 * t + tr) - (bl + 2.0 * b + br);
+        float magnitude = sqrt(gx * gx + gy * gy);
+        float4 c = image.sample(image.transform(p));
+        float k = smoothstep(threshold, threshold * 1.4, magnitude) * 0.9;
+        return float4(mix(c.rgb, color, k), 1.0);
     }
 }}

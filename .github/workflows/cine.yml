@@ -1,7 +1,7 @@
 # Compilation de Ciné (appareil photo au rendu pellicule) sur un Mac de GitHub.
 # 1. Tests du rendu (FilmCore).
 # 2. Compilation de l'app pour iPhone, sans signature (SideStore signe avec ton identifiant Apple).
-# 3. Publication de Cine.ipa (version « cine-v1.0.N », pas marquée comme la dernière : le lien
+# 3. Publication de Cine.ipa (version « cine-v1.1.N », pas marquée comme la dernière : le lien
 #    « latest » reste celui de Sommeil) et ajout de Ciné dans la source SideStore commune.
 name: Ciné
 
@@ -57,7 +57,7 @@ jobs:
         run: |
           xcodebuild -project Cine/Cine.xcodeproj -scheme Cine -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build-cine \
-            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            MARKETING_VERSION=1.1.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build > build-cine.log 2>&1 || {
               echo "::group::Erreurs de compilation"
@@ -97,8 +97,8 @@ jobs:
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: cine-v1.0.${{ github.run_number }}
-          name: Ciné 1.0.${{ github.run_number }}
+          tag_name: cine-v1.1.${{ github.run_number }}
+          name: Ciné 1.1.${{ github.run_number }}
           make_latest: false
           files: Cine.ipa
           body: |
@@ -113,6 +113,6 @@ jobs:
           echo "Source mise à jour dans la version $DERNIERE"
           scripts/completer_source.sh base.json
           # Sommeil doit rester dans la source : sinon on ne publie rien.
-          python3 scripts/source_sidestore.py Payload/Cine.app Cine.ipa "cine-v1.0.${{ github.run_number }}" source.json \
+          python3 scripts/source_sidestore.py Payload/Cine.app Cine.ipa "cine-v1.1.${{ github.run_number }}" source.json \
             --base base.json --exiger com.suivisommeil.enregistreur
           gh release upload "$DERNIERE" source.json --repo "$GITHUB_REPOSITORY" --clobber

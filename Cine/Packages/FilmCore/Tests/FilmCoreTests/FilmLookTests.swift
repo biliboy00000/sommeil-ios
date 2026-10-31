@@ -115,14 +115,52 @@ final class FilmLookTests: XCTestCase {
     }
 
     func testGlow() {
-        XCTAssertEqual(look.glowMask(SIMD3(repeating: 0.5)), SIMD3(repeating: 0))
-        let lamp = look.glowMask(SIMD3(3, 2, 1))
+        XCTAssertEqual(FilmLook.glowMask(SIMD3(repeating: 0.5), threshold: 0.9), SIMD3(repeating: 0))
+        let lamp = FilmLook.glowMask(SIMD3(3, 2, 1), threshold: 0.9)
         XCTAssertGreaterThan(lamp.x, lamp.z)
-        let huge = look.glowMask(SIMD3(repeating: 100))
+        let huge = FilmLook.glowMask(SIMD3(repeating: 100), threshold: 0.9)
         XCTAssertEqual((huge * FilmLook.lumaWeights).sum(), FilmLook.maxGlowExcess, accuracy: 1e-9)
-        let glowing = look.addGlow(SIMD3(repeating: 0.1), halo: SIMD3(repeating: 1), bloom: SIMD3(repeating: 0))
+        let zero = SIMD3<Double>(repeating: 0)
+        let glowing = look.addGlow(SIMD3(repeating: 0.1), halo: SIMD3(repeating: 1), mist: zero, streak: zero)
         XCTAssertGreaterThan(glowing.x, glowing.y)
         XCTAssertGreaterThan(glowing.y, glowing.z)
+    }
+
+    func testMistAndStreaks() {
+        var withEffects = look
+        withEffects.diffusion = DiffusionLevel.quarter.amount
+        withEffects.streak = StreakLevel.strong.amount
+        let zero = SIMD3<Double>(repeating: 0)
+        let base = SIMD3<Double>(repeating: 0.1)
+        // La diffusion ajoute la lumière avec sa couleur.
+        let misty = withEffects.addGlow(base, halo: zero, mist: SIMD3(1, 0.5, 0.2), streak: zero)
+        XCTAssertGreaterThan(misty.x - base.x, misty.z - base.z)
+        // Les flares sont bleutés et saturent.
+        let flare = withEffects.addGlow(base, halo: zero, mist: zero, streak: SIMD3(repeating: 2))
+        XCTAssertGreaterThan(flare.z, flare.x)
+        let blinding = withEffects.addGlow(base, halo: zero, mist: zero, streak: SIMD3(repeating: 1000))
+        XCTAssertLessThanOrEqual(blinding.z - base.z, withEffects.streak * withEffects.streakTint.z + 1e-9)
+        XCTAssertEqual(FilmLook.streakResponse(0), 0)
+        XCTAssertEqual(FilmLook.streakResponse(-3), 0)
+        XCTAssertLessThan(FilmLook.streakResponse(1), FilmLook.streakResponse(2))
+        // Diffusion de plus en plus forte et de plus en plus basse.
+        let levels = DiffusionLevel.allCases
+        for (a, b) in zip(levels, levels.dropFirst()) {
+            XCTAssertLessThan(a.amount, b.amount)
+            XCTAssertGreaterThan(a.threshold, b.threshold)
+        }
+    }
+
+    func testPreviewLowersEffectThresholds() {
+        var settings = RenderSettings()
+        settings.diffusion = .half
+        settings.streaks = .soft
+        let final = settings.look, preview = settings.look.forPreview()
+        XCTAssertLessThan(preview.halationThreshold, 1)
+        XCTAssertLessThan(preview.diffusionThreshold, 1)
+        XCTAssertLessThan(preview.streakThreshold, 1)
+        XCTAssertGreaterThan(preview.streakGain, final.streakGain)
+        XCTAssertGreaterThan(preview.halation, final.halation)
     }
 
     func testGrainWeightAndVignette() {
