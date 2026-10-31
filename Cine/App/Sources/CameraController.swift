@@ -460,10 +460,14 @@ final class CameraController: NSObject, ObservableObject {
         mode = newMode
         if newMode == .photo { videoDescription = "" }
         locked = false
+        manualISO = nil
+        manualShutter = nil
         prepareMicrophone {
             self.sessionQueue.async {
                 self.manual.mode = newMode
                 self.manual.locked = false
+                self.manual.iso = nil
+                self.manual.shutter = nil
                 guard self.configured else { return }
                 self.reconfigure()
             }

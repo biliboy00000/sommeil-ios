@@ -95,12 +95,13 @@ extern "C" { namespace coreimage {
         return float4(v, v, v, 1.0);
     }
 
-    /// Zébras : rayures sur les zones presque blanches (valeurs d'affichage au-dessus du seuil).
-    float4 zebra(sample_t s, float threshold, float period, destination dest) {
+    /// Zébras : rayures là où l'image source (avant le rendu) est presque blanche, c'est-à-dire là où
+    /// le capteur sature. La courbe de pellicule arrondit les blancs : on ne peut pas juger sur l'image rendue.
+    float4 zebra(sample_t s, sample_t source, float threshold, float period, destination dest) {
         float3 e = film::toDisplay3(s.rgb);
         float2 p = dest.coord();
         float stripe = fract((p.x + p.y) / period);
-        if (film::luma(e) > threshold && stripe < 0.5) {
+        if (film::luma(max(source.rgb, float3(0.0))) > threshold && stripe < 0.5) {
             e = mix(e, float3(0.08), 0.75);
         }
         return float4(film::toLinear3(e), 1.0);

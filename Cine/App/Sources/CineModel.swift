@@ -3,11 +3,20 @@ import SwiftUI
 import UIKit
 import FilmCore
 
+/// Inclinaison (degrés) par rapport à l'horizon, dans l'orientation tenue (niveau).
+final class LevelState: ObservableObject {
+    @Published fileprivate(set) var roll: Double = 0
+}
+
+/// Histogramme de l'aperçu (64 cases).
+final class HistogramState: ObservableObject {
+    @Published fileprivate(set) var bins: [Float] = []
+}
+
 /// Orientation de l'iPhone d'après la gravité (l'interface reste en portrait), et inclinaison pour le niveau.
 final class OrientationTracker: ObservableObject {
     @Published private(set) var orientation: HeldOrientation = .portrait
-    /// Inclinaison (degrés) par rapport à l'horizon, dans l'orientation tenue.
-    @Published private(set) var roll: Double = 0
+    let level = LevelState()
     var levelEnabled = false
 
     private let manager = CMMotionManager()
@@ -22,8 +31,9 @@ final class OrientationTracker: ObservableObject {
             if self.levelEnabled {
                 let angle = LevelMath.roll(gravityX: gravity.x, gravityY: gravity.y, orientation: self.orientation)
                 // Un peu de lissage, et pas de mise à jour pour moins de 0,1°.
-                let smoothed = self.roll + (angle - self.roll) * 0.35
-                if abs(smoothed - self.roll) > 0.1 { self.roll = smoothed }
+                let current = self.level.roll
+                let smoothed = current + (angle - current) * 0.35
+                if abs(smoothed - current) > 0.1 { self.level.roll = smoothed }
             }
         }
     }
@@ -82,7 +92,7 @@ final class CineModel: ObservableObject {
     @Published private(set) var flash = false
     @Published private(set) var toast: String?
     @Published private(set) var countdown: Int?
-    @Published private(set) var histogram: [Float] = []
+    let histogram = HistogramState()
     @Published private(set) var freeBytes: Int64 = 0
 
     private let defaults = UserDefaults.standard
@@ -127,7 +137,7 @@ final class CineModel: ObservableObject {
         camera.onRecordingFinished = { [weak self] request, result, stats in
             self?.recordingFinished(request, result: result, stats: stats)
         }
-        camera.processor.onHistogram = { [weak self] bins in self?.histogram = bins }
+        camera.processor.onHistogram = { [weak self] bins in self?.histogram.bins = bins }
         developer.onDeveloped = { [weak self] in self?.gallery.insert($0) }
         developer.onMessage = { [weak self] in self?.show($0) }
         thermalObserver = NotificationCenter.default.addObserver(

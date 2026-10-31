@@ -175,7 +175,7 @@ struct CameraView: View {
                 PreviewView(processor: camera.processor)
                 FormatMatte(format: model.format, showGrid: model.showGrid)
                 if model.tools.level {
-                    LevelIndicator(roll: motion.roll, baseRotation: motion.orientation.iconRotation)
+                    LevelOverlay(level: motion.level, baseRotation: motion.orientation.iconRotation)
                 }
                 if let focusPoint {
                     FocusReticle(locked: camera.locked, rotation: rotation)
@@ -214,8 +214,8 @@ struct CameraView: View {
 
     private var viewfinderTop: some View {
         HStack(alignment: .top) {
-            if model.tools.histogram, !model.histogram.isEmpty {
-                HistogramView(bins: model.histogram)
+            if model.tools.histogram {
+                HistogramOverlay(state: model.histogram)
                     .transition(.opacity)
             }
             Spacer()

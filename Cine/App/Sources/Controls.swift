@@ -595,3 +595,24 @@ struct CountdownView: View {
             .allowsHitTesting(false)
     }
 }
+
+/// Le niveau, redessiné seul quand l'iPhone bouge.
+struct LevelOverlay: View {
+    @ObservedObject var level: LevelState
+    let baseRotation: Double
+
+    var body: some View {
+        LevelIndicator(roll: level.roll, baseRotation: baseRotation)
+    }
+}
+
+/// L'histogramme, redessiné seul à chaque mesure.
+struct HistogramOverlay: View {
+    @ObservedObject var state: HistogramState
+
+    var body: some View {
+        if !state.bins.isEmpty {
+            HistogramView(bins: state.bins)
+        }
+    }
+}

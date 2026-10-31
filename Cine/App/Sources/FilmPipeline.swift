@@ -190,7 +190,8 @@ enum FilmPipeline {
                                             arguments: [source, current, 0.42, toolColor]) {
             current = peaked
         }
-        if zebras, let zebraKernel, let striped = zebraKernel.apply(extent: extent, arguments: [current, 0.95, 12.0]) {
+        // Seuil en lumière linéaire de l'image vidéo (0,9 ≈ 95 % affiché) : zones qui saturent.
+        if zebras, let zebraKernel, let striped = zebraKernel.apply(extent: extent, arguments: [current, source, 0.9, 12.0]) {
             current = striped
         }
         return current.cropped(to: extent)
