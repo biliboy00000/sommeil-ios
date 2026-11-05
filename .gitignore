@@ -14,3 +14,5 @@ App/SommeilNotification-Info.plist
 Cine/App/Info.plist
 build-cine/
 Cine/Packages/FilmCore/.swiftpm/
+Sonar/App/Info.plist
+build-sonar/

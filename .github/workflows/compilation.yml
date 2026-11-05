@@ -3,6 +3,7 @@
 # 2. Compilation de l'app pour iPhone, sans signature (SideStore signe ensuite avec ton identifiant Apple).
 # 3. Publication de Sommeil.ipa et de la source SideStore (source.json) dans « Releases ».
 # L'app Ciné (dossier Cine/) a sa propre compilation : .github/workflows/cine.yml.
+# L'app Sonar (dossier Sonar/) aussi : .github/workflows/sonar.yml.
 name: Compilation
 
 on:
@@ -11,10 +12,14 @@ on:
     paths-ignore:
       - 'Cine/**'
       - '.github/workflows/cine.yml'
+      - 'Sonar/**'
+      - '.github/workflows/sonar.yml'
   pull_request:
     paths-ignore:
       - 'Cine/**'
       - '.github/workflows/cine.yml'
+      - 'Sonar/**'
+      - '.github/workflows/sonar.yml'
   workflow_dispatch:
 
 permissions:
