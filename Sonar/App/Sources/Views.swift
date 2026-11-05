@@ -3,21 +3,20 @@ import SceneKit
 import SwiftUI
 import UIKit
 
-@main
-struct SonarApp: App {
-    @StateObject private var model = AppModel()
+/// L'écran complet de Sonar avec son modèle : utilisé par l'app Sonar et par l'app Gadget.
+struct SonarRoot: View {
+    @StateObject private var model = SonarModel()
 
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .environmentObject(model)
-                .preferredColorScheme(.dark)
-        }
+    var body: some View {
+        SonarView()
+            .environmentObject(model)
+            .preferredColorScheme(.dark)
+            .onDisappear { model.leave() }
     }
 }
 
-struct ContentView: View {
-    @EnvironmentObject var model: AppModel
+struct SonarView: View {
+    @EnvironmentObject var model: SonarModel
     @State private var showScans = false
 
     var body: some View {
@@ -64,6 +63,8 @@ struct ContentView: View {
 
     private var statusBar: some View {
         HStack(spacing: 8) {
+            GadgetExitButton()
+                .disabled(model.recording)
             Circle()
                 .fill(model.trackingOK ? Color.green : Color.orange)
                 .frame(width: 9, height: 9)
@@ -251,7 +252,7 @@ struct LevelMeter: View {
 }
 
 struct ScansView: View {
-    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var model: SonarModel
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {

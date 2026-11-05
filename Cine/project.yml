@@ -23,7 +23,10 @@ targets:
     platform: iOS
     sources:
       - path: App/Sources
+      - path: App/Entry
       - path: App/Resources
+      # Code commun avec l'app Gadget (bouton de retour aux gadgets).
+      - path: ../Shared
     dependencies:
       - package: FilmCore
     settings:

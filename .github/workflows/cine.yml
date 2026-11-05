@@ -1,8 +1,8 @@
 # Compilation de Ciné (appareil photo au rendu pellicule) sur un Mac de GitHub.
 # 1. Tests du rendu (FilmCore).
 # 2. Compilation de l'app pour iPhone, sans signature (SideStore signe avec ton identifiant Apple).
-# 3. Publication de Cine.ipa (version « cine-v1.1.N », pas marquée comme la dernière : le lien
-#    « latest » reste celui de Sommeil) et ajout de Ciné dans la source SideStore commune.
+# Vérification seulement : Ciné est publié dans l'app Gadget (.github/workflows/gadget.yml).
+# Le fichier Cine.ipa reste téléchargeable dans les « artifacts » de chaque compilation.
 name: Ciné
 
 on:
@@ -11,13 +11,12 @@ on:
     paths:
       - 'Cine/**'
       - '.github/workflows/cine.yml'
-      - 'scripts/source_sidestore.py'
-      - 'scripts/source_actuelle.sh'
-      - 'scripts/completer_source.sh'
+      - 'Shared/**'
   pull_request:
     paths:
       - 'Cine/**'
       - '.github/workflows/cine.yml'
+      - 'Shared/**'
   workflow_dispatch:
 
 permissions:
@@ -42,10 +41,6 @@ jobs:
     runs-on: macos-26
     needs: tests
     timeout-minutes: 40
-    # Une seule publication à la fois (Sommeil ou Ciné) : la source SideStore est commune.
-    concurrency:
-      group: publication-sidestore
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Installer XcodeGen
@@ -93,26 +88,3 @@ jobs:
         with:
           name: Cine-ipa
           path: Cine.ipa
-      - name: Publier la version
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: cine-v1.1.${{ github.run_number }}
-          name: Ciné 1.1.${{ github.run_number }}
-          make_latest: false
-          files: Cine.ipa
-          body: |
-            Version compilée automatiquement depuis ${{ github.sha }}.
-            À installer avec SideStore, directement sur l'iPhone (source « Sommeil et Ciné ») : voir Cine/README.md.
-      - name: Ajouter Ciné à la source SideStore
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          DERNIERE=$(scripts/source_actuelle.sh base.json)
-          echo "Source mise à jour dans la version $DERNIERE"
-          scripts/completer_source.sh base.json
-          # Sommeil doit rester dans la source : sinon on ne publie rien.
-          python3 scripts/source_sidestore.py Payload/Cine.app Cine.ipa "cine-v1.1.${{ github.run_number }}" source.json \
-            --base base.json --exiger com.suivisommeil.enregistreur
-          gh release upload "$DERNIERE" source.json --repo "$GITHUB_REPOSITORY" --clobber

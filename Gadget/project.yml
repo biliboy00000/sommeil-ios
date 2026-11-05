@@ -1,0 +1,85 @@
+# App Gadget : réunit plusieurs gadgets (Ciné, Sonar…) dans une seule app, pour n'occuper qu'une place
+# dans SideStore. Le code de chaque gadget reste dans son dossier (Cine/, Sonar/) et est partagé avec son
+# app seule ; seuls les points d'entrée (App/Entry de chaque gadget) sont laissés de côté.
+# Transformé en Gadget.xcodeproj par XcodeGen (sur le Mac de GitHub).
+name: Gadget
+options:
+  bundleIdPrefix: com.gadget
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  FilmCore:
+    path: ../Cine/Packages/FilmCore
+
+targets:
+  Gadget:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/Sources
+      - path: App/Resources
+      - path: ../Shared
+      # Gadget Ciné
+      - path: ../Cine/App/Sources
+      # Gadget Sonar
+      - path: ../Sonar/App/Sources
+    dependencies:
+      - package: FilmCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gadget.boite
+        PRODUCT_NAME: Gadget
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: NO
+        CODE_SIGN_STYLE: Manual
+        # Ciné : noyaux Core Image en Metal et petit code Objective-C.
+        MTL_COMPILER_FLAGS: "-fcikernel"
+        MTLLINKER_FLAGS: "-fcikernel"
+        SWIFT_OBJC_BRIDGING_HEADER: ../Cine/App/Sources/Cine-Bridging-Header.h
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Gadget
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+        # Autorisations de tous les gadgets réunis.
+        NSCameraUsageDescription: >-
+          Ciné utilise l'appareil photo pour ses photos et vidéos ; Sonar s'en sert seulement pour suivre
+          la position du téléphone pendant un scan.
+        NSMicrophoneUsageDescription: >-
+          Ciné enregistre le son de tes vidéos ; Sonar écoute les échos des sons qu'il émet.
+        NSPhotoLibraryAddUsageDescription: >-
+          Ciné enregistre tes photos et tes vidéos dans l'app Photos.
+        NSLocationWhenInUseUsageDescription: >-
+          Si tu actives l'option « Lieu » de Ciné, l'endroit de la prise de vue est ajouté à tes photos et vidéos.
+        # Journal de Ciné et scans de Sonar visibles dans l'app Fichiers (« Sur mon iPhone › Gadget »).
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        ITSAppUsesNonExemptEncryption: false
+
+schemes:
+  Gadget:
+    build:
+      targets:
+        Gadget: all
+    run:
+      config: Debug
+    archive:
+      config: Release

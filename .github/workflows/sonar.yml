@@ -1,8 +1,8 @@
 # Compilation de Sonar (scanner une pièce avec le son) sur un Mac de GitHub.
 # 1. Test de l'analyse Python sur un scan simulé.
 # 2. Compilation de l'app pour iPhone, sans signature (SideStore signe avec ton identifiant Apple).
-# 3. Publication de Sonar.ipa (version « sonar-v0.1.N », pas marquée comme la dernière : le lien
-#    « latest » reste celui de Sommeil) et ajout de Sonar dans la source SideStore commune.
+# Vérification seulement : Sonar est publié dans l'app Gadget (.github/workflows/gadget.yml).
+# Le fichier Sonar.ipa reste téléchargeable dans les « artifacts » de chaque compilation.
 name: Sonar
 
 on:
@@ -10,10 +10,12 @@ on:
     branches: [main]
     paths:
       - 'Sonar/**'
+      - 'Shared/**'
       - '.github/workflows/sonar.yml'
   pull_request:
     paths:
       - 'Sonar/**'
+      - 'Shared/**'
       - '.github/workflows/sonar.yml'
   workflow_dispatch:
 
@@ -52,10 +54,6 @@ jobs:
     name: App iPhone (Sonar)
     runs-on: macos-26
     timeout-minutes: 40
-    # Une seule publication à la fois (Sommeil, Ciné ou Sonar) : la source SideStore est commune.
-    concurrency:
-      group: publication-sidestore
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Installer XcodeGen
@@ -98,26 +96,3 @@ jobs:
         with:
           name: Sonar-ipa
           path: Sonar.ipa
-      - name: Publier la version
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: sonar-v0.1.${{ github.run_number }}
-          name: Sonar 0.1.${{ github.run_number }}
-          make_latest: false
-          files: Sonar.ipa
-          body: |
-            Version compilée automatiquement depuis ${{ github.sha }}.
-            À installer avec SideStore, directement sur l'iPhone (même source que Sommeil et Ciné) : voir Sonar/README.md.
-      - name: Ajouter Sonar à la source SideStore
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          DERNIERE=$(scripts/source_actuelle.sh base.json)
-          echo "Source mise à jour dans la version $DERNIERE"
-          scripts/completer_source.sh base.json
-          # Sommeil doit rester dans la source : sinon on ne publie rien.
-          python3 scripts/source_sidestore.py Payload/Sonar.app Sonar.ipa "sonar-v0.1.${{ github.run_number }}" source.json \
-            --base base.json --exiger com.suivisommeil.enregistreur
-          gh release upload "$DERNIERE" source.json --repo "$GITHUB_REPOSITORY" --clobber

@@ -4,6 +4,7 @@
 # 3. Publication de Sommeil.ipa et de la source SideStore (source.json) dans « Releases ».
 # L'app Ciné (dossier Cine/) a sa propre compilation : .github/workflows/cine.yml.
 # L'app Sonar (dossier Sonar/) aussi : .github/workflows/sonar.yml.
+# Ciné et Sonar sont publiés ensemble dans l'app Gadget : .github/workflows/gadget.yml.
 name: Compilation
 
 on:
@@ -14,12 +15,18 @@ on:
       - '.github/workflows/cine.yml'
       - 'Sonar/**'
       - '.github/workflows/sonar.yml'
+      - 'Gadget/**'
+      - 'Shared/**'
+      - '.github/workflows/gadget.yml'
   pull_request:
     paths-ignore:
       - 'Cine/**'
       - '.github/workflows/cine.yml'
       - 'Sonar/**'
       - '.github/workflows/sonar.yml'
+      - 'Gadget/**'
+      - 'Shared/**'
+      - '.github/workflows/gadget.yml'
   workflow_dispatch:
 
 permissions:

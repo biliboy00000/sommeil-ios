@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Écrit la « source » SideStore (format des sources AltStore) de ce dépôt, pour que SideStore
-propose tout seul les mises à jour des apps : Sommeil, Ciné et Sonar.
+propose tout seul les mises à jour des apps : Sommeil et Gadget (plus Ciné et Sonar seuls, figés).
 
     python3 scripts/source_sidestore.py <App.app> <App.ipa> <tag> <sortie.json> [--base <source.json>] [--exiger <identifiant>]
 
@@ -58,6 +58,17 @@ APPS = {
         "category": "utilities",
         "ipa": "Sonar.ipa",
     },
+    "com.gadget.boite": {
+        "name": "Gadget",
+        "subtitle": "Tous les gadgets dans une seule app",
+        "localizedDescription": (
+            "Réunit les gadgets dans une seule app (une seule place dans SideStore) : Ciné, l'appareil "
+            "photo au rendu pellicule, et Sonar, le scanner de pièce par le son. D'autres suivront."),
+        "iconURL": BRUT + "Gadget/App/Resources/Assets.xcassets/AppIcon.appiconset/icon.png",
+        "tintColor": "#F5B342",
+        "category": "utilities",
+        "ipa": "Gadget.ipa",
+    },
 }
 ORDRE = list(APPS)
 
@@ -111,7 +122,7 @@ def construire(app, ipa, tag, sortie, base=None, exiger=None):
     apps = {a["bundleIdentifier"]: a for a in lire_base(base)}
     apps[nouvelle["bundleIdentifier"]] = nouvelle
     source = {
-        "name": "Sommeil, Ciné et Sonar",
+        "name": "Sommeil et Gadget",
         "identifier": "com.suivisommeil.source",
         "subtitle": "Apps personnelles pour iPhone",
         "iconURL": APPS["com.suivisommeil.enregistreur"]["iconURL"],

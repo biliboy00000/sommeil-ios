@@ -1,0 +1,110 @@
+# Compilation de Gadget (l'app qui réunit les gadgets : Ciné, Sonar…) sur un Mac de GitHub.
+# 1. Compilation de l'app pour iPhone, sans signature (SideStore signe avec ton identifiant Apple).
+# 2. Publication de Gadget.ipa (version « gadget-v0.1.N », pas marquée comme la dernière : le lien
+#    « latest » reste celui de Sommeil) et ajout de Gadget dans la source SideStore commune.
+# Recompilée dès qu'un gadget change (Cine/, Sonar/, Shared/).
+name: Gadget
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Gadget/**'
+      - 'Cine/App/**'
+      - 'Cine/Packages/**'
+      - 'Sonar/App/**'
+      - 'Shared/**'
+      - '.github/workflows/gadget.yml'
+  pull_request:
+    paths:
+      - 'Gadget/**'
+      - 'Cine/App/**'
+      - 'Cine/Packages/**'
+      - 'Sonar/App/**'
+      - 'Shared/**'
+      - '.github/workflows/gadget.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gadget-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: App iPhone (Gadget)
+    runs-on: macos-26
+    timeout-minutes: 40
+    # Une seule publication à la fois (Sommeil ou Gadget) : la source SideStore est commune.
+    concurrency:
+      group: publication-sidestore
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer XcodeGen
+        run: brew install xcodegen
+      - name: Générer le projet Xcode
+        working-directory: Gadget
+        run: xcodegen generate
+      - name: Compiler pour iPhone (non signé)
+        run: |
+          xcodebuild -project Gadget/Gadget.xcodeproj -scheme Gadget -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build-gadget \
+            MARKETING_VERSION=0.1.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build-gadget.log 2>&1 || {
+              echo "::group::Erreurs de compilation"
+              grep -E "error:" build-gadget.log | sort -u | head -80
+              echo "::endgroup::"
+              tail -60 build-gadget.log
+              exit 1
+            }
+          echo "Avertissements : $(grep -cE ' warning:' build-gadget.log || true)"
+          grep -E " warning:" build-gadget.log | grep -v "/SourcePackages/" | sort -u | head -40 || true
+      - name: Fabriquer le fichier .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build-gadget/Build/Products/Release-iphoneos/Gadget.app Payload/
+          # Les noyaux Core Image de Ciné doivent être dans l'app.
+          test -f Payload/Gadget.app/default.metallib
+          plutil -p Payload/Gadget.app/Info.plist | grep -E "CFBundleIdentifier|CFBundleDisplayName|UsageDescription"
+          plutil -extract CFBundleDisplayName raw Payload/Gadget.app/Info.plist | LC_ALL=C grep -qE '^[A-Za-z0-9 ]+$'
+          zip -qry Gadget.ipa Payload
+          ls -lh Gadget.ipa
+      - name: Garder le journal de compilation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-compilation-gadget
+          path: build-gadget.log
+          if-no-files-found: ignore
+      - name: Garder l'app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gadget-ipa
+          path: Gadget.ipa
+      - name: Publier la version
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gadget-v0.1.${{ github.run_number }}
+          name: Gadget 0.1.${{ github.run_number }}
+          make_latest: false
+          files: Gadget.ipa
+          body: |
+            Version compilée automatiquement depuis ${{ github.sha }}.
+            À installer avec SideStore, directement sur l'iPhone (même source que Sommeil et Ciné) : voir Gadget/README.md.
+      - name: Ajouter Gadget à la source SideStore
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DERNIERE=$(scripts/source_actuelle.sh base.json)
+          echo "Source mise à jour dans la version $DERNIERE"
+          scripts/completer_source.sh base.json
+          # Sommeil doit rester dans la source : sinon on ne publie rien.
+          python3 scripts/source_sidestore.py Payload/Gadget.app Gadget.ipa "gadget-v0.1.${{ github.run_number }}" source.json \
+            --base base.json --exiger com.suivisommeil.enregistreur
+          gh release upload "$DERNIERE" source.json --repo "$GITHUB_REPOSITORY" --clobber

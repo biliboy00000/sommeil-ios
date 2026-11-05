@@ -18,7 +18,7 @@ struct ShareItem: Identifiable {
     let url: URL
 }
 
-final class AppModel: ObservableObject {
+final class SonarModel: ObservableObject {
     @Published var mode: ScanMode = .phare
     @Published var preset: RangePreset = .normal
     @Published var volume: Double = 0.8
@@ -83,6 +83,12 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Quand on quitte le gadget : arrête un scan en cours et met le suivi ARKit en pause.
+    func leave() {
+        if recording { stop() }
+        tracker.pause()
     }
 
     func toggleRecording() {

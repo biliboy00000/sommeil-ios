@@ -16,3 +16,5 @@ build-cine/
 Cine/Packages/FilmCore/.swiftpm/
 Sonar/App/Info.plist
 build-sonar/
+Gadget/App/Info.plist
+build-gadget/

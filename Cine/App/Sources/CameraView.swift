@@ -69,6 +69,11 @@ struct CameraView: View {
 
     private var topBar: some View {
         HStack(spacing: 10) {
+            // Retour à la liste des gadgets (seulement dans l'app Gadget).
+            GadgetExitButton()
+                .rotationEffect(rotation)
+                .disabled(camera.isRecording)
+
             Button {
                 showSettings = true
             } label: {

@@ -346,24 +346,3 @@ final class CineModel: ObservableObject {
             zebras: tools.zebras, peaking: tools.peaking, histogram: tools.histogram)
     }
 }
-
-@main
-struct CineApp: App {
-    @StateObject private var model = CineModel()
-    @Environment(\.scenePhase) private var scenePhase
-
-    var body: some Scene {
-        WindowGroup {
-            CameraView(model: model, camera: model.camera, gallery: model.gallery,
-                       developer: model.developer, motion: model.motion)
-                .preferredColorScheme(.dark)
-        }
-        .onChange(of: scenePhase, initial: true) { _, phase in
-            switch phase {
-            case .active: model.becameActive()
-            case .background: model.resignedActive()
-            default: break
-            }
-        }
-    }
-}
