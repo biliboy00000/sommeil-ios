@@ -22,6 +22,11 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
+            HiddenVolumeView()
+                .frame(width: 2, height: 2)
+                .opacity(0.01)
+                .allowsHitTesting(false)
+
             ARPreview(session: model.tracker.session)
                 .ignoresSafeArea()
                 .overlay(Color.black.opacity(model.recording ? 0.35 : 0.55).ignoresSafeArea())
@@ -118,8 +123,8 @@ struct ContentView: View {
                     .frame(width: 44, alignment: .trailing)
             }
 
-            if model.systemVolume < 0.9 {
-                Label("Volume de l'iPhone à \(Int(model.systemVolume * 100)) % : monte-le au maximum avec les boutons, sinon les échos sont trop faibles.",
+            if model.systemVolume < 0.9 && !model.mode.ultrasonic {
+                Label("Volume de l'iPhone à \(Int(model.systemVolume * 100)) % : monte-le avec les boutons, sinon la mesure est trop faible.",
                       systemImage: "speaker.wave.1.fill")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.orange)

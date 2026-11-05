@@ -201,6 +201,10 @@ def chercher_plans(pos, rot, rangs, sr, portee, axe=(0, 0, -1), directivite=1.0,
     acc = np.zeros((len(normales), len(rho)))
     poids_tot = np.zeros_like(acc)
     axe = np.asarray(axe, float)
+    # on retire le plancher de bruit de chaque profil : sinon la compensation ×d fait « gagner » le bruit au loin
+    loin = dist_lag > 0.5
+    plancher = np.median(rangs[:, loin], axis=1, keepdims=True) if loin.any() else 0
+    rangs = np.clip(rangs - 2.0 * plancher, 0, None)
     for k in range(len(pos)):
         proj = normales @ (pos[k] - centre)              # (N,)
         d = rho[None, :] - proj[:, None]                  # distance perpendiculaire

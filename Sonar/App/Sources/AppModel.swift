@@ -42,6 +42,7 @@ final class AppModel: ObservableObject {
     /// Volume général de l'iPhone (boutons latéraux) : il multiplie celui de l'app.
     @Published private(set) var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
     private var volumeObservation: NSKeyValueObservation?
+    private var volumeBeforeScan: Float?
 
     let tracker = Tracker()
     private let audio = AudioRig()
@@ -107,6 +108,13 @@ final class AppModel: ObservableObject {
         var plan: SignalPlan?
         echogram = nil
 
+        // Ultrasons : volume général au maximum pendant le scan (il est rétabli à l'arrêt).
+        volumeBeforeScan = nil
+        if mode.ultrasonic, systemVolume < 0.999 {
+            volumeBeforeScan = systemVolume
+            SystemVolume.set(1.0)
+        }
+
         tracker.beginLogging(to: folder)
         motion.start(folder: folder)
         let clockCheck: [String: Any] = [
@@ -136,7 +144,8 @@ final class AppModel: ObservableObject {
                 "debut": ISO8601DateFormatter().string(from: Date()),
                 "appareil": Self.deviceModel(),
                 "ios": UIDevice.current.systemVersion,
-                "volume_systeme": AVAudioSession.sharedInstance().outputVolume,
+                "volume_systeme_avant": volumeBeforeScan ?? systemVolume,
+                "volume_systeme_force_au_max": volumeBeforeScan != nil,
                 "audio": info,
                 "horloges_au_debut": clockCheck,
                 "repere_poses": "ARKit, monde aligné sur la gravité (Y vers le haut), pose de la caméra arrière",
@@ -147,6 +156,7 @@ final class AppModel: ObservableObject {
         } catch {
             tracker.endLogging()
             motion.stop()
+            if let v = volumeBeforeScan { SystemVolume.set(v); volumeBeforeScan = nil }
             message = "Audio impossible : \(error.localizedDescription)"
             return
         }
@@ -172,6 +182,10 @@ final class AppModel: ObservableObject {
         motion.stop()
         recording = false
         UIApplication.shared.isIdleTimerDisabled = false
+        if let v = volumeBeforeScan {
+            SystemVolume.set(v)
+            volumeBeforeScan = nil
+        }
 
         guard let folder else { return }
         var meta = startInfo
