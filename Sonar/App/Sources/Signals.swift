@@ -56,9 +56,9 @@ struct SignalPlan {
 }
 
 enum SignalFactory {
-    static let f0 = 18_000.0
-    static let f1 = 22_000.0
-    static let chirpMs = 10.0
+    static let f0 = 17_500.0
+    static let f1 = 20_000.0
+    static let chirpMs = 20.0
 
     static func make(mode: ScanMode, preset: RangePreset, volume: Double, sampleRate sr: Double) -> SignalPlan {
         mode.ultrasonic

@@ -21,7 +21,7 @@ struct ShareItem: Identifiable {
 final class AppModel: ObservableObject {
     @Published var mode: ScanMode = .phare
     @Published var preset: RangePreset = .normal
-    @Published var volume: Double = 0.5
+    @Published var volume: Double = 0.8
     @Published var lidar = false {
         didSet { if oldValue != lidar { tracker.run(lidar: lidar) } }
     }
@@ -39,6 +39,9 @@ final class AppModel: ObservableObject {
     @Published var message: String?
     @Published var share: ShareItem?
     @Published var preparingShare = false
+    /// Volume général de l'iPhone (boutons latéraux) : il multiplie celui de l'app.
+    @Published private(set) var systemVolume: Float = AVAudioSession.sharedInstance().outputVolume
+    private var volumeObservation: NSKeyValueObservation?
 
     let tracker = Tracker()
     private let audio = AudioRig()
@@ -58,6 +61,9 @@ final class AppModel: ObservableObject {
                 self?.trackingOK = ok
             }
         }
+        volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] session, _ in
+            DispatchQueue.main.async { self?.systemVolume = session.outputVolume }
+        }
     }
 
     // MARK: Cycle de vie
@@ -70,6 +76,7 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 if granted {
                     self.micOptions = self.audio.micOptions()
+                    self.systemVolume = AVAudioSession.sharedInstance().outputVolume
                 } else {
                     self.message = "Le micro est refusé : autorise-le dans Réglages › Sonar."
                 }
@@ -129,6 +136,7 @@ final class AppModel: ObservableObject {
                 "debut": ISO8601DateFormatter().string(from: Date()),
                 "appareil": Self.deviceModel(),
                 "ios": UIDevice.current.systemVersion,
+                "volume_systeme": AVAudioSession.sharedInstance().outputVolume,
                 "audio": info,
                 "horloges_au_debut": clockCheck,
                 "repere_poses": "ARKit, monde aligné sur la gravité (Y vers le haut), pose de la caméra arrière",

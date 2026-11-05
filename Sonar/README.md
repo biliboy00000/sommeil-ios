@@ -1,7 +1,7 @@
 # Sonar
 
 App iPhone qui scanne une pièce **avec le son** : le haut-parleur émet des chirps quasi inaudibles
-(18–22 kHz), les micros enregistrent les échos, et ARKit donne la position du téléphone à chaque chirp.
+(17,5–20 kHz), les micros enregistrent les échos, et ARKit donne la position du téléphone à chaque chirp.
 Le LiDAR est optionnel et sert seulement de **référence** pour vérifier le sonar.
 
 Cette première version est une **app de capture** : elle enregistre tout proprement, affiche les échos

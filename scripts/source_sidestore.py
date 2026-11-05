@@ -51,7 +51,7 @@ APPS = {
         "name": "Sonar",
         "subtitle": "Scanner une pièce avec le son",
         "localizedDescription": (
-            "Émet des chirps quasi inaudibles (18–22 kHz) et enregistre leurs échos avec la position du "
+            "Émet des chirps quasi inaudibles (17,5–20 kHz) et enregistre leurs échos avec la position du "
             "téléphone (ARKit), pour reconstruire la pièce en 3D par le son. LiDAR en option, comme référence."),
         "iconURL": BRUT + "Sonar/App/Resources/Assets.xcassets/AppIcon.appiconset/icon.png",
         "tintColor": "#F5B342",

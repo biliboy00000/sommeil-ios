@@ -118,6 +118,13 @@ struct ContentView: View {
                     .frame(width: 44, alignment: .trailing)
             }
 
+            if model.systemVolume < 0.9 {
+                Label("Volume de l'iPhone à \(Int(model.systemVolume * 100)) % : monte-le au maximum avec les boutons, sinon les échos sont trop faibles.",
+                      systemImage: "speaker.wave.1.fill")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.orange)
+            }
+
             Toggle(isOn: $model.lidar) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("LiDAR (référence)")
@@ -130,7 +137,7 @@ struct ContentView: View {
             .disabled(!model.lidarSupported)
 
             if model.mode.ultrasonic {
-                Text("18–22 kHz : inaudible pour la plupart des adultes, mais pas forcément pour les enfants, chiens et chats.")
+                Text("17,5–20 kHz : inaudible pour la plupart des adultes, mais pas forcément pour les enfants, chiens et chats.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
