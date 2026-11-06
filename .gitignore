@@ -18,3 +18,5 @@ Sonar/App/Info.plist
 build-sonar/
 Gadget/App/Info.plist
 build-gadget/
+Telecommande/serveur/config.json
+Telecommande/serveur/.venv/

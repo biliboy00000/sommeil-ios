@@ -2,7 +2,7 @@
 # 1. Compilation de l'app pour iPhone, sans signature (SideStore signe avec ton identifiant Apple).
 # 2. Publication de Gadget.ipa (version « gadget-v0.1.N », pas marquée comme la dernière : le lien
 #    « latest » reste celui de Sommeil) et ajout de Gadget dans la source SideStore commune.
-# Recompilée dès qu'un gadget change (Cine/, Sonar/, Shared/).
+# Recompilée dès qu'un gadget change (Cine/, Sonar/, Telecommande/, Shared/).
 name: Gadget
 
 on:
@@ -13,6 +13,7 @@ on:
       - 'Cine/App/**'
       - 'Cine/Packages/**'
       - 'Sonar/App/**'
+      - 'Telecommande/App/**'
       - 'Shared/**'
       - '.github/workflows/gadget.yml'
   pull_request:
@@ -21,6 +22,7 @@ on:
       - 'Cine/App/**'
       - 'Cine/Packages/**'
       - 'Sonar/App/**'
+      - 'Telecommande/App/**'
       - 'Shared/**'
       - '.github/workflows/gadget.yml'
   workflow_dispatch:

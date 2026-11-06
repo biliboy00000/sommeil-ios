@@ -29,5 +29,9 @@ enum Catalogue {
                     icon: "IconeSonar", tint: Color(red: 0.96, green: 0.70, blue: 0.26)) {
             AnyView(SonarRoot())
         },
+        GadgetEntry(id: "telecommande", name: "Télécommande", subtitle: "Piloter le PC, et son son sur le téléphone",
+                    icon: "IconeTelecommande", tint: Color(red: 1.0, green: 0.42, blue: 0.30)) {
+            AnyView(TeleRoot())
+        },
     ]
 }

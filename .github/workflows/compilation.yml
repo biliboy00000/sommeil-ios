@@ -16,6 +16,7 @@ on:
       - 'Sonar/**'
       - '.github/workflows/sonar.yml'
       - 'Gadget/**'
+      - 'Telecommande/**'
       - 'Shared/**'
       - '.github/workflows/gadget.yml'
   pull_request:
@@ -25,6 +26,7 @@ on:
       - 'Sonar/**'
       - '.github/workflows/sonar.yml'
       - 'Gadget/**'
+      - 'Telecommande/**'
       - 'Shared/**'
       - '.github/workflows/gadget.yml'
   workflow_dispatch:

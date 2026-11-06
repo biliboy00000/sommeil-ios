@@ -32,6 +32,8 @@ targets:
       - path: ../Cine/App/Sources
       # Gadget Sonar
       - path: ../Sonar/App/Sources
+      # Gadget Télécommande
+      - path: ../Telecommande/App/Sources
     dependencies:
       - package: FilmCore
     settings:
@@ -62,13 +64,20 @@ targets:
         # Autorisations de tous les gadgets réunis.
         NSCameraUsageDescription: >-
           Ciné utilise l'appareil photo pour ses photos et vidéos ; Sonar s'en sert seulement pour suivre
-          la position du téléphone pendant un scan.
+          la position du téléphone pendant un scan ; Télécommande, pour scanner le QR code de ton PC.
         NSMicrophoneUsageDescription: >-
           Ciné enregistre le son de tes vidéos ; Sonar écoute les échos des sons qu'il émet.
         NSPhotoLibraryAddUsageDescription: >-
           Ciné enregistre tes photos et tes vidéos dans l'app Photos.
         NSLocationWhenInUseUsageDescription: >-
           Si tu actives l'option « Lieu » de Ciné, l'endroit de la prise de vue est ajouté à tes photos et vidéos.
+        NSLocalNetworkUsageDescription: >-
+          Télécommande se connecte au programme de ton PC sur le Wi-Fi de la maison.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        # Télécommande : le son du PC continue sur le téléphone écran verrouillé.
+        UIBackgroundModes:
+          - audio
         # Journal de Ciné et scans de Sonar visibles dans l'app Fichiers (« Sur mon iPhone › Gadget »).
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
