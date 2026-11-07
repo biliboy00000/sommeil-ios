@@ -341,6 +341,9 @@ struct TelePave: View {
                     touche("arrow.up") { model.touche("haut") }
                     touche("arrow.down") { model.touche("bas") }
                     touche("arrow.right") { model.touche("droite") }
+                    touche(texte: "Écran ◀︎") { model.combinaison(["win", "maj", "gauche"]) }
+                    touche(texte: "Écran ▶︎") { model.combinaison(["win", "maj", "droite"]) }
+                    touche(texte: "Agrandir") { model.combinaison(["win", "haut"]) }
                     touche(texte: "Alt+Tab") { model.combinaison(["alt", "tab"]) }
                     touche(texte: "Copier") { model.combinaison(["ctrl", "c"]) }
                     touche(texte: "Coller") { model.combinaison(["ctrl", "v"]) }

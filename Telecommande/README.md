@@ -32,7 +32,7 @@ de se connecter. Supprimer `config.json` en crée une nouvelle (il faudra rescan
 
 | Onglet | Contenu |
 |---|---|
-| Pavé | 1 doigt = souris, toucher = clic, 2 doigts = défiler, toucher à 2 doigts = clic droit, appui long = glisser ; clavier en direct ; touches (⌫, ⏎, Échap, Tab, flèches, Alt+Tab, copier/coller) |
+| Pavé | 1 doigt = souris, toucher = clic, 2 doigts = défiler, toucher à 2 doigts = clic droit, appui long = glisser ; clavier en direct ; touches (⌫, ⏎, Échap, Tab, flèches, fenêtre vers l'autre écran ◀︎ ▶︎, agrandir, Alt+Tab, copier/coller) |
 | Lecture | Lecture/pause, piste précédente/suivante, ±5 s, plein écran, sous-titres, muet, volume du PC (ou du téléphone quand le son y est), délai du son |
 | Système | YouTube, Netflix, Google, adresse ou recherche ; verrouiller, écran noir, veille, redémarrer, éteindre (15 s pour annuler) ; vitesse de la souris ; oublier le PC |
 
