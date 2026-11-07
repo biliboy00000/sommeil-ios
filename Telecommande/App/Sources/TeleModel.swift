@@ -66,6 +66,7 @@ final class TeleModel: ObservableObject {
     private var tache: URLSessionWebSocketTask?
     private var veutEtreConnecte = false
     private var essais = 0
+    private var derniereErreurAudio: String?
 
     init() {
         if let data = UserDefaults.standard.data(forKey: "tele.appairage"),
@@ -160,8 +161,13 @@ final class TeleModel: ObservableObject {
             muetPC = msg["muet"] as? Bool ?? muetPC
             let surTel = (msg["sortie"] as? String) == "telephone"
             appliquerSortie(surTel)
-            if let err = msg["erreur_audio"] as? String, surTel {
-                message = "Le PC n'arrive pas à capturer son son : \(err)"
+            if let err = msg["erreur_audio"] as? String {
+                if err != derniereErreurAudio {
+                    derniereErreurAudio = err
+                    message = "Le PC n'arrive pas à capturer son son, il reste sur le PC : \(err)"
+                }
+            } else {
+                derniereErreurAudio = nil
             }
         case "erreur":
             message = msg["message"] as? String

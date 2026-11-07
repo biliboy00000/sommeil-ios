@@ -152,8 +152,9 @@ class Capture:
     """Capture « ce que l'ordinateur joue » (bouclage WASAPI) dans un fil à part.
     Chaque bloc de 10 ms (int16 stéréo) est remis à `rappel`."""
 
-    def __init__(self, rappel):
+    def __init__(self, rappel, echec=None):
         self.rappel = rappel
+        self.echec = echec          # appelé (depuis ce fil) si la capture s'arrête sur une erreur
         self.arret = threading.Event()
         self.fil = None
         self.erreur = None
@@ -175,9 +176,11 @@ class Capture:
                 self._bip()
             else:
                 self._wasapi()
-        except Exception as e:  # signalé au téléphone
+        except Exception as e:  # signalé au téléphone, et le son revient sur le PC
             self.erreur = str(e)
             journal("⚠️  capture du son impossible :", e)
+            if self.echec:
+                self.echec()
 
     def _bip(self):
         import numpy as np
@@ -193,6 +196,11 @@ class Capture:
 
     def _wasapi(self):
         import warnings
+        if WINDOWS:
+            # Chaque fil qui parle au système audio de Windows doit initialiser COM
+            # (sinon : erreur 0x800401F0 « CoInitialize n'a pas été appelé »).
+            import ctypes
+            ctypes.windll.ole32.CoInitializeEx(None, 0)   # COINIT_MULTITHREADED ; S_FALSE si déjà fait
         import numpy as np
         import soundcard as sc
         # « data discontinuity » : simple trou de capture (le PC était silencieux), sans gravité
@@ -219,13 +227,27 @@ class Etat:
         self.muet_avant = None      # état « muet » du PC avant de passer le son au téléphone
         self.volume = Volume()
         self.boucle = None
-        self.capture = Capture(self._bloc_audio)
+        self.capture = Capture(self._bloc_audio, self._capture_en_echec)
 
     # appelé depuis le fil de capture
     def _bloc_audio(self, donnees):
         if self.boucle is None:
             return
         self.boucle.call_soon_threadsafe(self._distribuer, donnees)
+
+    def _capture_en_echec(self):
+        if self.boucle is None:
+            return
+
+        def retour_pc():
+            if self.sortie == "telephone":
+                self.capture.arreter()
+                self.volume.couper(bool(self.muet_avant))
+                self.sortie = "pc"
+                journal("🔊 son → ordinateur (capture en échec)")
+            asyncio.ensure_future(self.diffuser_infos())
+
+        self.boucle.call_soon_threadsafe(retour_pc)
 
     def _distribuer(self, donnees):
         for file in self.auditeurs.values():
@@ -255,6 +277,7 @@ class Etat:
         if cible == self.sortie:
             return
         if cible == "telephone":
+            self.capture.erreur = None
             self.muet_avant = self.volume.lire()[1]
             self.capture.demarrer()
             self.volume.couper(True)     # le bouclage capture quand même le son, avant la coupure
