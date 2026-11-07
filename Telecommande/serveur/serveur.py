@@ -149,43 +149,55 @@ class Volume:
 # ------------------------------------------------------------------ son de l'ordinateur → téléphone
 
 class Capture:
-    """Capture « ce que l'ordinateur joue » (bouclage WASAPI) dans un fil à part.
-    Chaque bloc de 10 ms (int16 stéréo) est remis à `rappel`."""
+    """Capture « ce que l'ordinateur joue » (bouclage WASAPI).
+
+    Un seul fil, créé une fois et gardé jusqu'à la fin du programme : la bibliothèque `soundcard`
+    initialise le système audio de Windows (COM) dans le fil qui l'importe, et refuse de le faire
+    dans un autre fil (erreurs 0x800401F0 / 0x100000001). Basculer le son ne fait donc que mettre
+    ce fil en marche ou en pause. Chaque bloc de 10 ms (int16 stéréo) est remis à `rappel`."""
 
     def __init__(self, rappel, echec=None):
         self.rappel = rappel
-        self.echec = echec          # appelé (depuis ce fil) si la capture s'arrête sur une erreur
-        self.arret = threading.Event()
-        self.fil = None
+        self.echec = echec          # appelé (depuis le fil) si la capture s'arrête sur une erreur
+        self.voulu = threading.Event()
         self.erreur = None
+        self.fil = None
 
     def demarrer(self):
-        if self.fil and self.fil.is_alive():
-            return
-        self.arret.clear()
         self.erreur = None
-        self.fil = threading.Thread(target=self._boucle, daemon=True)
-        self.fil.start()
+        self.voulu.set()
+        if self.fil is None or not self.fil.is_alive():
+            self.fil = threading.Thread(target=self._fil, daemon=True, name="capture-son")
+            self.fil.start()
 
     def arreter(self):
-        self.arret.set()
+        self.voulu.clear()
 
-    def _boucle(self):
-        try:
-            if SIMULATION:
-                self._bip()
-            else:
-                self._wasapi()
-        except Exception as e:  # signalé au téléphone, et le son revient sur le PC
-            self.erreur = str(e)
-            journal("⚠️  capture du son impossible :", e)
-            if self.echec:
-                self.echec()
+    def _fil(self):
+        sc = None
+        while True:
+            self.voulu.wait()
+            try:
+                if SIMULATION:
+                    self._bip()
+                else:
+                    if sc is None:
+                        import warnings
+                        import soundcard as sc
+                        # « data discontinuity » : simple trou de capture, sans gravité
+                        warnings.filterwarnings("ignore", category=getattr(sc, "SoundcardRuntimeWarning", RuntimeWarning))
+                    self._wasapi(sc)
+            except Exception as e:  # signalé au téléphone, et le son revient sur le PC
+                self.erreur = str(e)
+                journal("⚠️  capture du son impossible :", e)
+                self.voulu.clear()
+                if self.echec:
+                    self.echec()
 
     def _bip(self):
         import numpy as np
         t0, n = time.perf_counter(), 0
-        while not self.arret.is_set():
+        while self.voulu.is_set():
             t = (np.arange(BLOC) + n * BLOC) / TAUX
             s = (0.2 * np.sin(2 * math.pi * 440 * t) * (np.sin(2 * math.pi * 1 * t) > 0)).astype(np.float32)
             self.rappel(np.repeat((s * 32767).astype(np.int16)[:, None], 2, axis=1).tobytes())
@@ -194,22 +206,13 @@ class Capture:
             if attente > 0:
                 time.sleep(attente)
 
-    def _wasapi(self):
-        import warnings
-        if WINDOWS:
-            # Chaque fil qui parle au système audio de Windows doit initialiser COM
-            # (sinon : erreur 0x800401F0 « CoInitialize n'a pas été appelé »).
-            import ctypes
-            ctypes.windll.ole32.CoInitializeEx(None, 0)   # COINIT_MULTITHREADED ; S_FALSE si déjà fait
+    def _wasapi(self, sc):
         import numpy as np
-        import soundcard as sc
-        # « data discontinuity » : simple trou de capture (le PC était silencieux), sans gravité
-        warnings.filterwarnings("ignore", category=getattr(sc, "SoundcardRuntimeWarning", RuntimeWarning))
         haut_parleur = sc.default_speaker()
         micro = sc.get_microphone(str(haut_parleur.name), include_loopback=True)
         journal("🎧 capture de « %s »" % haut_parleur.name)
         with micro.recorder(samplerate=TAUX, channels=CANAUX, blocksize=BLOC) as rec:
-            while not self.arret.is_set():
+            while self.voulu.is_set():
                 bloc = rec.record(numframes=BLOC)
                 if bloc.ndim == 1:
                     bloc = np.repeat(bloc[:, None], 2, axis=1)
