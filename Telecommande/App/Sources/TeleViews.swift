@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UIKit
 import VisionKit
@@ -35,6 +36,7 @@ struct TeleRoot: View {
 struct TeleAppairageView: View {
     @EnvironmentObject var model: TeleModel
     @State private var scanner = false
+    @State private var codeInconnu = false
     @State private var hote = ""
     @State private var port = "8765"
     @State private var cle = ""
@@ -56,12 +58,11 @@ struct TeleAppairageView: View {
                 }
                 Section {
                     Button {
-                        scanner = true
+                        Task { await ouvrirScanner() }
                     } label: {
                         Label("Scanner le QR code", systemImage: "qrcode.viewfinder")
                             .font(.headline)
                     }
-                    .disabled(!(DataScannerViewController.isSupported && DataScannerViewController.isAvailable))
                 }
                 Section("Ou à la main") {
                     TextField("Adresse (ex. 192.168.1.20)", text: $hote)
@@ -87,15 +88,48 @@ struct TeleAppairageView: View {
                 ToolbarItem(placement: .topBarLeading) { GadgetExitButton() }
             }
             .sheet(isPresented: $scanner) {
-                TeleScanner { code in
-                    guard let a = TeleAppairage(lien: code) else { return }
-                    scanner = false
-                    model.appairage = a
-                    model.connecter()
+                ZStack(alignment: .top) {
+                    TeleScanner { code in
+                        guard let a = TeleAppairage(lien: code) else {
+                            codeInconnu = true
+                            return
+                        }
+                        scanner = false
+                        model.appairage = a
+                        model.connecter()
+                    }
+                    .ignoresSafeArea()
+
+                    HStack {
+                        Text(codeInconnu ? "Ce QR code ne vient pas du programme Télécommande."
+                                         : "Vise le QR code affiché dans la fenêtre du PC.")
+                            .font(.footnote.weight(.medium))
+                        Spacer()
+                        Button("Fermer") { scanner = false }
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .padding(12)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    .padding()
                 }
-                .ignoresSafeArea()
             }
         }
+    }
+
+    /// iOS ne déclare le scanner « disponible » qu'une fois l'appareil photo autorisé :
+    /// on demande donc l'autorisation d'abord, puis on ouvre le scanner.
+    private func ouvrirScanner() async {
+        guard DataScannerViewController.isSupported else {
+            model.message = "Cet iPhone ne sait pas scanner de QR code ici : saisis l'adresse et la clé à la main."
+            return
+        }
+        let autorise = await AVCaptureDevice.requestAccess(for: .video)
+        guard autorise else {
+            model.message = "L'appareil photo est refusé : autorise-le dans Réglages › Gadget, ou saisis l'adresse et la clé à la main."
+            return
+        }
+        codeInconnu = false
+        scanner = true
     }
 }
 
