@@ -115,14 +115,16 @@ final class BreathSoundTests: XCTestCase {
         XCTAssertLessThanOrEqual(analyzer.epochs(count: 6).filter(\.usable).count, 1)
     }
 
-    func testNightAnalyzerUsesSoundWhenThePhoneIsBesideTheHead() throws {
+    /// Téléphone à côté : silence de 16 s au micro (200–216 s). Le mouvement du thorax tranche.
+    private func besideTheHead(tilt: Double, holds: [Range<Double>]) throws -> NightReport {
         var plan = SimulationPlan()
         plan.kind = "nuit"
         plan.duration = 360
         plan.heartScale = 0.5
-        plan.breathTiltDegrees = 0
+        plan.breathTiltDegrees = tilt
+        plan.breathsPerMinute = 15
         plan.positions = [.init(from: 0, gravity: (0.02, 0.05, -0.998))]
-        plan.breathHolds = []
+        plan.breathHolds = holds
         plan.moves = []
         plan.placement = "a_cote"
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("son_\(UUID().uuidString)")
@@ -138,10 +140,27 @@ final class BreathSoundTests: XCTestCase {
         }
         let report = analyzer.finish(now: 1_760_200_000)
         XCTAssertTrue(report.soundAnalyzed)
-        XCTAssertTrue(report.epochs.breathSource.contains("son"))
         XCTAssertEqual(report.summary.breathMedian ?? 0, 15, accuracy: 1)
+        return report
+    }
+
+    func testSilenceWithTheChestStillIsAReducedBreathing() throws {
+        let report = try besideTheHead(tilt: 0.05, holds: [199..<217])
         let pauses = report.events.filter { $0.kind == "pause" }
-        XCTAssertEqual(pauses.count, 1)
-        XCTAssertEqual((pauses.first?.startUnix ?? 0) - plan.startUnix, 198, accuracy: 3)
+        XCTAssertEqual(pauses.count, 1, "\(report.events.map { ($0.kind, $0.startUnix - 1_760_120_000) })")
+        XCTAssertEqual((pauses.first?.startUnix ?? 0) - 1_760_120_000, 198, accuracy: 3)
+    }
+
+    func testSilenceWithTheChestStillMovingIsDismissed() throws {
+        let report = try besideTheHead(tilt: 0.05, holds: [])
+        XCTAssertTrue(report.events.filter { $0.kind.hasPrefix("pause") }.isEmpty,
+                      "\(report.events.map { ($0.kind, $0.startUnix - 1_760_120_000) })")
+        XCTAssertEqual(report.summary.silencesDismissed, 1)
+    }
+
+    func testSilenceWithoutChestSignalCannotBeChecked() throws {
+        let report = try besideTheHead(tilt: 0, holds: [])
+        XCTAssertTrue(report.events.filter { $0.kind == "pause" }.isEmpty)
+        XCTAssertEqual(report.events.filter { $0.kind == "pause_inverifiable" }.count, 1)
     }
 }

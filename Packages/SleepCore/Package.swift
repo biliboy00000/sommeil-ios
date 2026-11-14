@@ -13,6 +13,8 @@ let package = Package(
         .target(name: "SleepCore"),
         // Écrit une séance simulée (pouls, respiration et pauses connus) pour tester la lecture et les algorithmes.
         .executableTarget(name: "SessionSimulator", dependencies: ["SleepCore"]),
+        // Analyse une vraie séance sur ordinateur (vérification de l'analyse de l'app).
+        .executableTarget(name: "NightCheck", dependencies: ["SleepCore"]),
         .testTarget(name: "SleepCoreTests", dependencies: ["SleepCore"])
     ]
 )

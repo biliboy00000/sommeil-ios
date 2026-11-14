@@ -51,7 +51,8 @@ final class NightAnalysisTests: XCTestCase {
         // Pouls.
         let heart = try XCTUnwrap(report.summary.heartMedian)
         XCTAssertEqual(heart, 62, accuracy: 2)
-        XCTAssertEqual(report.blocks.compactMap(\.heartSource), ["battements", "battements"])
+        XCTAssertEqual(report.blocks.compactMap(\.heartSource), ["suivi", "suivi"])
+        XCTAssertGreaterThan(report.summary.heartWindowShare ?? 0, 0.6)
 
         // Respiration : 14 par minute, par le mouvement.
         let breath = try XCTUnwrap(report.summary.breathMedian)
@@ -82,19 +83,19 @@ final class NightAnalysisTests: XCTestCase {
         plan.seed = 7
         let report = try analyze(try session(plan))
 
-        XCTAssertEqual(report.placement, "a_cote", "battements faibles : deviné à côté")
+        XCTAssertEqual(report.placement, "a_cote", "respiration à peine visible au gyroscope : deviné à côté")
         XCTAssertTrue(report.epochs.position.allSatisfy(\.isEmpty))
         let measured = report.blocks.compactMap(\.heartBPM)
         XCTAssertGreaterThanOrEqual(measured.count, 6, "\(report.blocks.map(\.heartBPM))")
         for value in measured { XCTAssertEqual(value, 66, accuracy: 3) }
-        XCTAssertTrue(report.blocks.contains { $0.heartSource == "moyenne" })
-        // Mouvements : un petit, un grand (30 s) ; blocs agités autour.
+        XCTAssertTrue(report.blocks.allSatisfy { $0.heartSource == nil || $0.heartSource == "suivi" })
+        // Mouvements : un petit (6 s), un grand (30 s) ; seul le grand compte comme un éveil (3 min environ).
         XCTAssertEqual(report.summary.movementEvents, 2)
-        XCTAssertEqual(report.blocks[4].level, "agite")
-        XCTAssertEqual(report.blocks[5].level, "agite")
+        XCTAssertEqual(report.blocks[4].level, "leger")
         XCTAssertEqual(report.summary.awakenings, 1)
+        XCTAssertEqual(report.summary.wakeAfterOnset ?? 0, 180, accuracy: 60)
         XCTAssertEqual(report.blocks[1].level, "calme")
-        // Endormissement : premier quart d'heure calme, dès le début.
+        // Endormissement : pouls stable, donc premier calme de 10 min, dès le début.
         XCTAssertEqual(report.summary.sleepOnsetUnix, plan.startUnix)
         XCTAssertTrue(report.events.filter { $0.kind == "pause" }.isEmpty)
     }
@@ -142,32 +143,43 @@ final class NightAnalysisTests: XCTestCase {
         XCTAssertEqual((falls.first?.startUnix ?? 0) - plan.startUnix, 150, accuracy: 1.5)
     }
 
-    func testScoreOfTheThirdNight() {
-        // Chiffres de la nuit du 22/10 (analyse Python) : 69/100, nuit correcte.
-        let summary = NightReport.Summary(
-            recorded: 8.47 * 3600, restSeconds: 6 * 3600 + 600, calmShare: 0.54, calmSeconds: 0, lightSeconds: 0,
-            agitatedSeconds: 0, movementEvents: 215, bigMovements: 77, bigMovementsPerHour: 9.1, sleepOnsetUnix: nil,
-            lastCalmEndUnix: nil, awakenings: 0, positions: [:], heartMedian: 68.1, heartMin: 63.4,
-            heartStart: 74, heartEnd: 67.4, heartCoverage: 0.46, rmssd: nil, breathMedian: 15.7, breathCoverage: 0.35,
-            breathHours: 3, pauses: 2, pausesPerHour: 0.7, snoreMinutes: 0, soundNoiseShare: 0)
-        let score = try! XCTUnwrap(NightScoring.score(summary))
-        XCTAssertEqual(score.value, 69)
-        XCTAssertEqual(score.verdict, "Nuit correcte")
+    private func summary(sleepHours: Double, wakeMinutes: Double, latencyMinutes: Double, reducedPerHour: Double?,
+                         heartAwake: Double?, heartAsleep: Double?) -> NightReport.Summary {
+        var s = NightReport.Summary(
+            recorded: 7.6 * 3600, restSeconds: sleepHours * 3600, calmShare: 0, calmSeconds: 0, lightSeconds: 0,
+            agitatedSeconds: 0, movementEvents: 0, bigMovements: 0, bigMovementsPerHour: 0, sleepOnsetUnix: nil,
+            lastCalmEndUnix: nil, awakenings: 14, positions: [:], heartMedian: nil, heartMin: nil, heartStart: nil,
+            heartEnd: nil, heartCoverage: 0, rmssd: nil, breathMedian: nil, breathCoverage: 0, breathHours: 0,
+            pauses: 0, pausesPerHour: reducedPerHour, snoreMinutes: 0, soundNoiseShare: 0)
+        s.sleepSeconds = sleepHours * 3600
+        s.wakeAfterOnset = wakeMinutes * 60
+        s.onsetLatency = latencyMinutes * 60
+        s.heartAwake = heartAwake
+        s.heartAsleep = heartAsleep
+        return s
+    }
+
+    func testScoreOfTheNightOfNovember3() {
+        // Chiffres de l'analyse 0.4 de la nuit du 03/11 : 5 h 26 de sommeil, 70 min d'éveil, endormi après 57 min,
+        // 0,92 respiration réduite par heure, pouls 73 au coucher et 69 endormi → 44/100.
+        let s = summary(sleepHours: 19_560 / 3600, wakeMinutes: 70, latencyMinutes: 57, reducedPerHour: 5 / (19_560 / 3600),
+                        heartAwake: 73, heartAsleep: 69)
+        let score = try! XCTUnwrap(NightScoring.score(s))
+        XCTAssertEqual(score.value, 44)
+        XCTAssertEqual(score.verdict, "Nuit difficile")
         XCTAssertEqual(score.parts.count, 5)
         XCTAssertEqual(score.parts.reduce(0) { $0 + $1.weight }, 1, accuracy: 1e-9)
     }
 
-    func testScoreWithoutHeartAndBreathingUsesTheOtherIndicators() {
-        var summary = NightReport.Summary(
-            recorded: 8 * 3600, restSeconds: 7 * 3600, calmShare: 0.8, calmSeconds: 0, lightSeconds: 0,
-            agitatedSeconds: 0, movementEvents: 0, bigMovements: 0, bigMovementsPerHour: 4, sleepOnsetUnix: nil,
-            lastCalmEndUnix: nil, awakenings: 0, positions: [:], heartMedian: nil, heartMin: nil, heartStart: nil,
-            heartEnd: nil, heartCoverage: 0, rmssd: nil, breathMedian: nil, breathCoverage: 0, breathHours: 0,
-            pauses: 0, pausesPerHour: nil, snoreMinutes: 0, soundNoiseShare: 0)
-        XCTAssertEqual(NightScoring.score(summary)?.value, 100)
-        XCTAssertEqual(NightScoring.score(summary)?.parts.count, 3)
-        summary.recorded = 3600
-        XCTAssertNil(NightScoring.score(summary))
+    func testScoreUsesTheOximeterWhenThereIsOne() {
+        var s = summary(sleepHours: 7, wakeMinutes: 10, latencyMinutes: 15, reducedPerHour: 0, heartAwake: nil, heartAsleep: nil)
+        XCTAssertEqual(NightScoring.score(s)?.value, 100)
+        XCTAssertEqual(NightScoring.score(s)?.parts.count, 4)
+        s.desaturationsPerHour = 5
+        let score = try! XCTUnwrap(NightScoring.score(s))
+        XCTAssertTrue(score.parts.contains { $0.name == "Respiration" && $0.measure.contains("oxygène") && abs($0.points - 50) < 1e-9 })
+        s.recorded = 3600
+        XCTAssertNil(NightScoring.score(s))
     }
 
     func testReportIsSavedAndReadBack() throws {

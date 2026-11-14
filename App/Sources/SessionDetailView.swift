@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import SleepCore
 import Charts
 
@@ -133,6 +134,8 @@ struct SessionDetailView: View {
     @State private var zipping = false
     @State private var confirmDelete = false
     @State private var alert: AlertMessage?
+    @State private var importingOximeter = false
+    @EnvironmentObject private var analysis: NightAnalysisRunner
 
     /// Version à jour (le rapport arrive après l'ouverture de l'écran).
     private var current: SessionItem { model.sessions.first { $0.id == item.id } ?? item }
@@ -174,6 +177,10 @@ struct SessionDetailView: View {
             sizeText = String(format: "%.0f Mo", Double(bytes) / 1_000_000)
         }
         .sheet(item: $sharedFile) { ShareSheet(items: [$0.url]) }
+        .fileImporter(isPresented: $importingOximeter,
+                      allowedContentTypes: [.commaSeparatedText, .plainText, .text, .data]) { result in
+            if case .success(let file) = result { importOximeter(file) }
+        }
         .alert(item: $alert) { Alert(title: Text($0.title), message: Text($0.message)) }
         .confirmationDialog("Supprimer cet enregistrement de l'iPhone ?", isPresented: $confirmDelete,
                             titleVisibility: .visible) {
@@ -327,6 +334,20 @@ struct SessionDetailView: View {
                  + "dans l'app Fichiers, « Sur mon iPhone › Sommeil ».")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if current.info?.kind == "nuit" {
+                Button { importingOximeter = true } label: {
+                    Label(current.report?.references?.oxygen == nil ? "Importer l'oxymètre (.csv)"
+                                                                     : "Remplacer l'oxymètre (.csv)",
+                          systemImage: "drop.circle")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .secondaryButton()
+                Text("Export CSV de l'app de l'oxymètre (Wellue/ViHealth, EMAY…) : seules les mesures de cette nuit sont gardées, "
+                     + "puis la nuit est réanalysée.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Button(role: .destructive) { confirmDelete = true } label: {
                 Label("Supprimer de l'iPhone", systemImage: "trash")
                     .frame(maxWidth: .infinity)
@@ -334,6 +355,32 @@ struct SessionDetailView: View {
             }
             .secondaryButton()
             .padding(.top, 6)
+        }
+    }
+
+    private func importOximeter(_ file: URL) {
+        guard let info = current.info else { return }
+        let access = file.startAccessingSecurityScopedResource()
+        defer { if access { file.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: file),
+              let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+            alert = AlertMessage(title: "Fichier illisible", message: "Le fichier n'a pas pu être ouvert.")
+            return
+        }
+        let end = info.endUnix ?? (info.startUnix + 12 * 3600)
+        do {
+            let count = try OximeterImport.save(text, to: current.url, startUnix: info.startUnix, endUnix: end)
+            if count == 0 {
+                alert = AlertMessage(title: "Aucune mesure de cette nuit",
+                                     message: "Le fichier ne contient pas de mesures d'oxygène lisibles aux heures de cet "
+                                         + "enregistrement. Vérifie que c'est bien l'export de cette nuit, au format CSV.")
+            } else {
+                analysis.enqueue(current.url, first: true)
+                alert = AlertMessage(title: "Oxymètre importé",
+                                     message: "\(count) mesures gardées. La nuit est en cours de réanalyse.")
+            }
+        } catch {
+            alert = AlertMessage(title: "Import impossible", message: error.localizedDescription)
         }
     }
 

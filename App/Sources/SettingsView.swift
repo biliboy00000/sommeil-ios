@@ -17,6 +17,7 @@ struct SettingsView: View {
             Form {
                 reminderSection
                 recordingSection
+                ReferenceSection()
                 installationSection
                 diagnosticSection
                 Section {
@@ -167,6 +168,86 @@ struct SettingsView: View {
                     model.alert = AlertMessage(title: "Export impossible", message: error.localizedDescription)
                 }
             }
+        }
+    }
+}
+
+
+/// Appareils de référence : ceinture cardio (enregistrée la nuit) et oxymètre (importé le matin).
+struct ReferenceSection: View {
+    @ObservedObject private var strap = ChestStrap.shared
+    @EnvironmentObject private var recorder: Recorder
+    @State private var pairing = false
+
+    var body: some View {
+        Section {
+            if let name = strap.savedName {
+                InfoRow(label: "Ceinture cardio", value: name)
+                if recorder.isRecording {
+                    InfoRow(label: "Pendant la nuit", value: strap.status)
+                }
+                Button(role: .destructive) { strap.forget() } label: {
+                    Label("Oublier cette ceinture", systemImage: "xmark.circle")
+                }
+                .disabled(recorder.isRecording)
+            } else {
+                Button { pairing = true } label: {
+                    Label("Associer une ceinture cardio", systemImage: "heart.circle")
+                }
+            }
+        } header: {
+            Text("Vérification")
+        } footer: {
+            Text("Une ceinture cardio Bluetooth (par exemple Polar H10) portée la nuit sert de référence : le matin, "
+                 + "le rapport dit à combien de battements près l'iPhone a mesuré ton pouls. Elle se connecte seule au "
+                 + "début de chaque nuit. Pour un oxymètre de nuit, exporte la nuit en CSV depuis son app, puis "
+                 + "« Importer l'oxymètre » en bas de la nuit concernée.")
+        }
+        .sheet(isPresented: $pairing) { StrapPairingSheet() }
+    }
+}
+
+struct StrapPairingSheet: View {
+    @ObservedObject private var strap = ChestStrap.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    if strap.bluetoothOff {
+                        Label("Active le Bluetooth (et autorise Sommeil à l'utiliser).", systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    } else if strap.found.isEmpty {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Recherche… Mets la ceinture (électrodes humides) pour la réveiller.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    ForEach(strap.found.sorted { $0.rssi > $1.rssi }) { device in
+                        Button {
+                            strap.choose(device)
+                            dismiss()
+                        } label: {
+                            HStack {
+                                Label(device.name, systemImage: "heart.circle.fill")
+                                Spacer()
+                                Text("\(device.rssi) dBm").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } footer: {
+                    Text("Seules les ceintures au standard Bluetooth « fréquence cardiaque » apparaissent.")
+                }
+            }
+            .navigationTitle("Ceinture cardio")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Fermer") { dismiss() } }
+            }
+            .onAppear { strap.startScan() }
+            .onDisappear { strap.stopScan() }
         }
     }
 }

@@ -53,9 +53,13 @@ targets:
         # Mode d'arrière-plan « audio » : l'enregistrement du micro garde l'app active écran verrouillé.
         UIBackgroundModes:
           - audio
+          - bluetooth-central
         NSMicrophoneUsageDescription: >-
           Le micro enregistre les bruits de la nuit (respiration, ronflements). Le son reste sur ton iPhone.
           Il permet aussi à l'app de continuer à enregistrer écran verrouillé.
+        NSBluetoothAlwaysUsageDescription: >-
+          Le Bluetooth sert seulement à enregistrer une ceinture cardio pendant la nuit, pour vérifier
+          la précision du pouls mesuré par l'iPhone.
         NSMotionUsageDescription: >-
           Les capteurs de mouvement mesurent les battements du cœur (aussi en direct), la respiration,
           la position et les mouvements.

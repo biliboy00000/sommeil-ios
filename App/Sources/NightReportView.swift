@@ -15,6 +15,7 @@ struct NightReportView: View {
             ScoreCard(report: report)
             if !report.notes.isEmpty { notesCard }
             KeyFigures(report: report)
+            if let references = report.references { VerificationCard(references: references) }
             TimelineCard(report: report)
             if !report.summary.positions.isEmpty { PositionsCard(report: report) }
             EventsCard(report: report, directory: item.url, player: player)
@@ -82,8 +83,9 @@ struct ScoreCard: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                Text("Fiabilité : pouls mesuré sur \(s.heartCoverage.percentText) de la nuit, respiration suivie sur "
-                     + "\(s.breathCoverage.percentText).")
+                Text("Fiabilité : pouls mesuré sur \((s.heartWindowShare ?? s.heartCoverage).percentText) de la nuit, "
+                     + "respiration suivie sur \(s.breathCoverage.percentText)"
+                     + (s.breathAgreement.map { ", micro et capteurs d'accord \($0.percentText) du temps." } ?? "."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Label(report.placement == "corps" ? "Téléphone sur la poitrine" : "Téléphone à côté",
@@ -105,21 +107,32 @@ struct KeyFigures: View {
     var body: some View {
         let s = report.summary
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            StatTile(icon: "moon.zzz.fill", tint: .indigo, title: "Endormissement probable",
-                     value: s.sleepOnsetUnix.map { clockText(Date(timeIntervalSince1970: $0)) } ?? "—",
-                     detail: s.sleepOnsetUnix.map { "après \(TimeText.duration($0 - report.startUnix))" } ?? "aucun long moment calme")
-            StatTile(icon: "bed.double.fill", tint: .purple, title: "Repos",
-                     value: TimeText.duration(s.restSeconds),
-                     detail: "calme \(TimeText.duration(s.calmSeconds)) · agité \(TimeText.duration(s.agitatedSeconds))")
+            if let sleep = s.sleepSeconds {
+                StatTile(icon: "bed.double.fill", tint: .purple, title: "Sommeil estimé",
+                         value: TimeText.duration(sleep),
+                         detail: sleepRange(s))
+                StatTile(icon: "moon.zzz.fill", tint: .indigo, title: "Endormissement",
+                         value: s.sleepOnsetUnix.map { clockText(Date(timeIntervalSince1970: $0)) } ?? "—",
+                         detail: (s.onsetLatency.map { "après \(TimeText.duration($0))" } ?? "non trouvé")
+                             + (s.wakeAfterOnset.map { " · éveillé \(TimeText.duration($0)) ensuite" } ?? ""))
+            } else {
+                StatTile(icon: "moon.zzz.fill", tint: .indigo, title: "Endormissement probable",
+                         value: s.sleepOnsetUnix.map { clockText(Date(timeIntervalSince1970: $0)) } ?? "—",
+                         detail: s.sleepOnsetUnix.map { "après \(TimeText.duration($0 - report.startUnix))" } ?? "aucun long moment calme")
+                StatTile(icon: "bed.double.fill", tint: .purple, title: "Repos",
+                         value: TimeText.duration(s.restSeconds),
+                         detail: "calme \(TimeText.duration(s.calmSeconds)) · agité \(TimeText.duration(s.agitatedSeconds))")
+            }
             StatTile(icon: "heart.fill", tint: Palette.heart, title: "Pouls",
                      value: s.heartMedian.map { "\(Int($0.rounded())) bpm" } ?? "—",
                      detail: heartDetail(s))
             StatTile(icon: "lungs.fill", tint: .teal, title: "Respiration",
                      value: s.breathMedian.map { "\(Int($0.rounded())) /min" } ?? "—",
                      detail: s.breathCoverage > 0 ? "suivie \(TimeText.duration(s.breathHours * 3600))" : "pas assez nette")
-            StatTile(icon: "pause.circle.fill", tint: s.pauses > 0 ? .orange : .green, title: "Pauses possibles",
+            StatTile(icon: "pause.circle.fill", tint: s.pauses > 0 ? .orange : .green,
+                     title: s.sleepSeconds == nil ? "Pauses possibles" : "Respiration réduite",
                      value: "\(s.pauses)",
-                     detail: s.pausesPerHour.map { String(format: "%.1f par heure suivie", $0) } ?? "respiration trop peu suivie")
+                     detail: pausesDetail(s))
             StatTile(icon: "figure.walk.motion", tint: .orange, title: "Grands mouvements",
                      value: "\(s.bigMovements)",
                      detail: String(format: "%.1f par heure · %d réveil%@ probable%@", s.bigMovementsPerHour, s.awakenings,
@@ -133,7 +146,28 @@ struct KeyFigures: View {
         }
     }
 
+    private func sleepRange(_ s: NightReport.Summary) -> String {
+        if let low = s.sleepLowSeconds, let high = s.sleepHighSeconds, high - low >= 600 {
+            return "entre \(TimeText.duration(low)) et \(TimeText.duration(high))"
+        }
+        return "sur \(TimeText.duration(s.recorded)) enregistrées"
+    }
+
+    private func pausesDetail(_ s: NightReport.Summary) -> String {
+        guard s.sleepSeconds != nil else {
+            return s.pausesPerHour.map { String(format: "%.1f par heure suivie", $0) } ?? "respiration trop peu suivie"
+        }
+        var parts: [String] = []
+        if let rate = s.pausesPerHour { parts.append(String(format: "%.1f par heure", rate)) }
+        if let n = s.pausesUnverifiable, n > 0 { parts.append("\(n) invérifiable\(n > 1 ? "s" : "")") }
+        if let n = s.silencesDismissed, n > 0 { parts.append("\(n) silence\(n > 1 ? "s" : "") écarté\(n > 1 ? "s" : "")") }
+        return parts.isEmpty ? "thorax vérifié" : parts.joined(separator: " · ")
+    }
+
     private func heartDetail(_ s: NightReport.Summary) -> String {
+        if let awake = s.heartAwake, let asleep = s.heartAsleep {
+            return "éveillé \(Int(awake.rounded())) → endormi \(Int(asleep.rounded()))"
+        }
         if let start = s.heartStart, let end = s.heartEnd {
             return "\(Int(start.rounded())) → \(Int(end.rounded())) · min \(Int((s.heartMin ?? end).rounded()))"
         }
@@ -181,8 +215,7 @@ struct TimelineCard: View {
                             .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 2]))
                     }
                 }
-                .chartForegroundStyleScale(["Calme": Color.indigo, "Mouvements légers": Color.teal,
-                                            "Agité": Color.orange, "Pas de mesure": Color.gray.opacity(0.3)])
+                .chartForegroundStyleScale(Self.levelScale(report))
                 .chartYAxis(.hidden)
                 .chartYScale(domain: 0...1)
                 .chartXScale(domain: start...end)
@@ -258,9 +291,17 @@ struct TimelineCard: View {
         }
     }
 
+    /// Échelle des couleurs : seulement les niveaux présents (les rapports d'avant 0.4 ont « agité », les autres « éveil »).
+    static func levelScale(_ report: NightReport) -> KeyValuePairs<String, Color> {
+        if report.blocks.contains(where: { $0.level == "eveil" }) || report.version >= 2 {
+            return ["Calme": .indigo, "Mouvements légers": .teal, "Éveil": .orange, "Pas de mesure": Color.gray.opacity(0.3)]
+        }
+        return ["Calme": .indigo, "Mouvements légers": .teal, "Agité": .orange, "Pas de mesure": Color.gray.opacity(0.3)]
+    }
+
     static func height(_ level: String) -> Double {
         switch level {
-        case "agite": return 1
+        case "agite", "eveil": return 1
         case "leger": return 0.55
         case "calme": return 0.22
         default: return 0.1
@@ -405,6 +446,7 @@ struct EventsCard: View {
     static func icon(_ kind: String) -> String {
         switch kind {
         case "pause": return "pause.fill"
+        case "pause_inverifiable": return "questionmark.circle.fill"
         case "chute": return "arrow.down.to.line"
         case "telephone_deplace": return "iphone.gen3.radiowaves.left.and.right"
         case "ronflement": return "zzz"
@@ -416,10 +458,80 @@ struct EventsCard: View {
     static func tint(_ kind: String) -> Color {
         switch kind {
         case "pause": return .red
+        case "pause_inverifiable": return .gray
         case "chute", "telephone_deplace": return .orange
         case "ronflement": return .brown
         default: return .gray
         }
+    }
+}
+
+// MARK: - Vérification (ceinture, oxymètre)
+
+struct VerificationCard: View {
+    let references: ReferenceReport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Vérification", systemImage: "checkmark.seal.fill")
+                .font(.headline)
+                .foregroundStyle(.indigo)
+            if let strap = references.strap { pulseRows("Ceinture cardio", strap) }
+            if let ox = references.oximeterPulse, references.strap == nil { pulseRows("Pouls de l'oxymètre", ox) }
+            if let oxygen = references.oxygen {
+                Divider()
+                Text("Oxygène (oxymètre)").font(.subheadline.weight(.semibold))
+                InfoRow(label: "SpO₂ médiane · minimum",
+                        value: String(format: "%.0f %% · %.0f %%", oxygen.median, oxygen.minimum),
+                        valueColor: oxygen.minimum < 88 ? .orange : .primary)
+                InfoRow(label: "Sous 90 %", value: TimeText.duration(oxygen.secondsBelow90),
+                        valueColor: oxygen.secondsBelow90 >= 300 ? .orange : .primary)
+                InfoRow(label: "Baisses d'au moins 3 points",
+                        value: "\(oxygen.desaturations)" + (oxygen.desaturationsPerHour.map { String(format: " · %.1f /h", $0) } ?? ""))
+                if oxygen.reducedPauses > 0 || oxygen.desaturations > 0 {
+                    Text(agreementText(oxygen))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .font(.subheadline)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    @ViewBuilder
+    private func pulseRows(_ title: String, _ c: ReferenceReport.PulseComparison) -> some View {
+        Text(title).font(.subheadline.weight(.semibold))
+        if c.compared > 0 {
+            InfoRow(label: "Écart moyen avec l'iPhone", value: String(format: "%.1f bpm", c.meanAbsoluteError),
+                    valueColor: c.meanAbsoluteError <= 3 ? .green : (c.meanAbsoluteError <= 5 ? .primary : .orange))
+            InfoRow(label: "À 3 bpm près · à 5 bpm près",
+                    value: "\(c.within3.percentText) · \(c.within5.percentText)")
+            InfoRow(label: "Biais", value: String(format: "%+.1f bpm", c.bias))
+            InfoRow(label: "Nuit couverte par l'iPhone", value: c.appCoverage.percentText)
+            Text("Sur \(TimeText.duration(c.referenceMinutes * 60)) de mesure de référence. L'iPhone ne donne un pouls "
+                 + "que quand il est sûr de lui : la couverture dit combien de la nuit il a jugé.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Pas de moment commun avec le pouls de l'iPhone.").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func agreementText(_ o: ReferenceReport.Oxygen) -> String {
+        var parts: [String] = []
+        if o.reducedPauses > 0 {
+            parts.append("\(o.reducedWithDesaturation) des \(o.reducedPauses) respirations réduites repérées par l'iPhone "
+                         + "sont suivies d'une baisse d'oxygène")
+        }
+        if o.desaturationsWithoutPause > 0 {
+            parts.append("\(o.desaturationsWithoutPause) baisse\(o.desaturationsWithoutPause > 1 ? "s" : "") sans pause repérée")
+        }
+        if o.dismissedPauses > 0 {
+            parts.append("\(o.dismissedWithDesaturation) des \(o.dismissedPauses) silences écartés en avaient une")
+        }
+        return parts.joined(separator: " ; ") + "."
     }
 }
 

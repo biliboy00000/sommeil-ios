@@ -360,6 +360,11 @@ final class Recorder: ObservableObject {
         }
         let streams = motion.start(directory: directory, raw: settings.rawSensors)
         session.streams = streams.map(\.prefix)
+        // Ceinture cardio associée : enregistrée comme référence (sert à vérifier le pouls de l'app).
+        if kind == .night {
+            ChestStrap.shared.onEvent = { [weak self] message in self?.log("ceinture", message) }
+            ChestStrap.shared.startRecording(directory: directory)
+        }
         info = session
         writeInfo()
 
@@ -613,6 +618,7 @@ final class Recorder: ObservableObject {
         tickTimer = nil
         speaker.stop()
         motion.stop()
+        ChestStrap.shared.stopRecording()
         audio?.stop()
         audio = nil
 

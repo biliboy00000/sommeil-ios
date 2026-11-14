@@ -24,6 +24,8 @@ public struct NightReport: Codable, Sendable {
     public var score: Score?
     /// Remarques sur la fiabilité (emplacement douteux, vidéo pendant la nuit…).
     public var notes: [String]
+    /// Comparaison avec la ceinture cardio et l'oxymètre, s'ils ont été utilisés (version 2).
+    public var references: ReferenceReport? = nil
 
     /// Une valeur par tranche de 30 s.
     public struct Epochs: Codable, Sendable {
@@ -42,16 +44,18 @@ public struct NightReport: Codable, Sendable {
         public var soundNoise: [Double]
         /// Souffles graves et forts (ronflements possibles).
         public var snore: [Int]
+        /// Endormi (estimation par le mouvement et le pouls), depuis la version 2.
+        public var asleep: [Bool]? = nil
     }
 
     /// Un bloc de 5 minutes.
     public struct Block: Codable, Sendable, Identifiable {
         public var startUnix: Double
-        /// "calme", "leger", "agite" ou "manquant".
+        /// "calme", "leger", "eveil" (depuis la version 2 ; "agite" avant) ou "manquant".
         public var level: String
         public var movingSeconds: Int
         public var heartBPM: Double?
-        /// "battements" (battements nets) ou "moyenne" (moyenne sur 5 min d'un signal faible).
+        /// "suivi" (suivi continu, version 2) ; avant : "battements" ou "moyenne".
         public var heartSource: String?
         public var breathRate: Double?
 
@@ -59,7 +63,8 @@ public struct NightReport: Codable, Sendable {
     }
 
     public struct Event: Codable, Sendable, Identifiable {
-        /// "pause", "chute", "telephone_deplace", "ronflement", "interruption", "trou".
+        /// "pause" (respiration réduite possible, recoupée), "pause_inverifiable", "chute", "telephone_deplace",
+        /// "ronflement", "interruption", "trou".
         public var kind: String
         public var startUnix: Double
         public var duration: Double
@@ -111,6 +116,30 @@ public struct NightReport: Codable, Sendable {
         public var snoreMinutes: Double
         /// Part de la nuit avec un bruit continu (vidéo, podcast, parole…).
         public var soundNoiseShare: Double
+
+        // Depuis la version 2 (0.4).
+        /// Sommeil estimé (s) et fourchette selon le seuil de mouvement retenu pour un éveil.
+        public var sleepSeconds: Double? = nil
+        public var sleepLowSeconds: Double? = nil
+        public var sleepHighSeconds: Double? = nil
+        /// Délai entre le début de l'enregistrement et l'endormissement (s).
+        public var onsetLatency: Double? = nil
+        /// Éveils après l'endormissement (s).
+        public var wakeAfterOnset: Double? = nil
+        /// Pouls éveillé au coucher (20 premières minutes) et pouls médian endormi.
+        public var heartAwake: Double? = nil
+        public var heartAsleep: Double? = nil
+        /// Part de la nuit (fenêtres de 5 s) avec un pouls fiable.
+        public var heartWindowShare: Double? = nil
+        /// Part des tranches où gyroscope et micro donnent le même rythme (± 1,5 /min), quand les deux sont fiables.
+        public var breathAgreement: Double? = nil
+        public var pausesUnverifiable: Int? = nil
+        /// Silences du micro écartés : le thorax continuait de bouger.
+        public var silencesDismissed: Int? = nil
+        /// Amplitude respiratoire médiane au gyroscope (rad/s).
+        public var breathingAmplitude: Double? = nil
+        /// Baisses d'oxygène (≥ 3 points) par heure de sommeil, si un oxymètre a été importé.
+        public var desaturationsPerHour: Double? = nil
     }
 
     public struct Score: Codable, Sendable {
@@ -159,13 +188,15 @@ extension NightReport {
         case "calme": return "Calme"
         case "leger": return "Mouvements légers"
         case "agite": return "Agité"
+        case "eveil": return "Éveil"
         default: return "Pas de mesure"
         }
     }
 }
 
-/// Note de la nuit sur 100 (repères fixés le 23/10/2026, sans validation médicale).
-/// Chaque indicateur est ramené linéairement entre une borne « 0 point » et une borne « 100 points ».
+/// Note de la nuit sur 100 (version 2, 14/11/2026). Repères choisis sans validation médicale, à recaler
+/// sur plusieurs nuits au même emplacement. Chaque indicateur est ramené linéairement entre une borne
+/// « 0 point » et une borne « 100 points ».
 public enum NightScoring {
     public struct Indicator: Sendable {
         public var name: String
@@ -174,10 +205,10 @@ public enum NightScoring {
         public var weight: Double
     }
 
-    public static let rest = Indicator(name: "Durée de repos", zero: 4, hundred: 7, weight: 0.25)
-    public static let calm = Indicator(name: "Calme", zero: 0.30, hundred: 0.80, weight: 0.20)
-    public static let continuity = Indicator(name: "Continuité", zero: 14, hundred: 4, weight: 0.20)
-    public static let breathing = Indicator(name: "Respiration", zero: 15, hundred: 0, weight: 0.20)
+    public static let sleep = Indicator(name: "Durée de sommeil", zero: 4, hundred: 7, weight: 0.30)
+    public static let continuity = Indicator(name: "Continuité", zero: 60, hundred: 10, weight: 0.25)
+    public static let latency = Indicator(name: "Endormissement", zero: 60, hundred: 15, weight: 0.10)
+    public static let breathing = Indicator(name: "Respiration", zero: 10, hundred: 0, weight: 0.20)
     public static let heart = Indicator(name: "Pouls", zero: -10, hundred: 10, weight: 0.15)
 
     public static func points(_ value: Double, _ indicator: Indicator) -> Double {
@@ -192,22 +223,32 @@ public enum NightScoring {
         return "Nuit difficile"
     }
 
-    /// Note, ou nil si la nuit est trop courte (moins de 2 h enregistrées).
+    /// Note, ou nil si la nuit est trop courte (moins de 2 h enregistrées) ou sans estimation du sommeil.
     public static func score(_ s: NightReport.Summary) -> NightReport.Score? {
-        guard s.recorded >= 2 * 3600 else { return nil }
+        guard s.recorded >= 2 * 3600, let sleepSeconds = s.sleepSeconds, sleepSeconds > 0 else { return nil }
         var parts: [NightReport.Score.Part] = []
         func add(_ indicator: Indicator, _ value: Double, _ measure: String) {
             parts.append(.init(name: indicator.name, measure: measure, points: points(value, indicator), weight: indicator.weight))
         }
-        add(rest, s.restSeconds / 3600, TimeText.duration(s.restSeconds))
-        add(calm, s.calmShare, "\(Int((s.calmShare * 100).rounded())) % de blocs calmes")
-        add(continuity, s.bigMovementsPerHour, String(format: "%.1f grands mouvements par heure", s.bigMovementsPerHour))
-        if let rate = s.pausesPerHour, s.breathHours >= 1 {
-            add(breathing, rate, String(format: "%.1f pause%@ possible%@ par heure", rate, rate >= 2 ? "s" : "", rate >= 2 ? "s" : ""))
+        var measure = TimeText.duration(sleepSeconds)
+        if let low = s.sleepLowSeconds, let high = s.sleepHighSeconds, high - low >= 600 {
+            measure += " (\(TimeText.duration(low)) à \(TimeText.duration(high)))"
         }
-        if let start = s.heartStart, let end = s.heartEnd {
-            let drop = start - end
-            add(heart, drop, String(format: "%@%.0f bpm du début à la fin", drop >= 0 ? "−" : "+", abs(drop)))
+        add(sleep, sleepSeconds / 3600, measure)
+        if let wake = s.wakeAfterOnset {
+            add(continuity, wake / 60, "\(Int((wake / 60).rounded())) min d'éveil après l'endormissement, \(s.awakenings) éveil\(s.awakenings > 1 ? "s" : "")")
+        }
+        if let latency = s.onsetLatency {
+            add(self.latency, latency / 60, "endormi \(Int((latency / 60).rounded())) min après le début")
+        }
+        if let odi = s.desaturationsPerHour {
+            add(breathing, odi, String(format: "%.1f baisse%@ d'oxygène par heure de sommeil (oxymètre)", odi, odi >= 2 ? "s" : ""))
+        } else if let rate = s.pausesPerHour {
+            add(breathing, rate, String(format: "%.1f respiration%@ réduite%@ par heure de sommeil", rate, rate >= 2 ? "s" : "", rate >= 2 ? "s" : ""))
+        }
+        if let awake = s.heartAwake, let asleep = s.heartAsleep {
+            let drop = awake - asleep
+            add(heart, drop, String(format: "%@%.0f bpm endormi par rapport au coucher", drop >= 0 ? "−" : "+", abs(drop)))
         }
         let total = parts.reduce(0) { $0 + $1.weight }
         guard total > 0 else { return nil }
