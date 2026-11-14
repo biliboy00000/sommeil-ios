@@ -104,7 +104,7 @@ jobs:
           # On garde l'entrée de Ciné de la source actuelle (remise d'après sa dernière version si elle manque).
           scripts/source_actuelle.sh base.json
           scripts/completer_source.sh base.json
-          python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.3.${{ github.run_number }}" source.json \
+          python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.4.${{ github.run_number }}" source.json \
             --base base.json --exiger com.cine.pellicule
       - name: Garder le journal de compilation
         if: always()
@@ -124,8 +124,8 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.${{ github.run_number }}
-          name: Sommeil 0.3.${{ github.run_number }}
+          tag_name: v0.4.${{ github.run_number }}
+          name: Sommeil 0.4.${{ github.run_number }}
           make_latest: true
           files: |
             Sommeil.ipa
