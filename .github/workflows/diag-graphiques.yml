@@ -1,0 +1,19 @@
+# Diagnostic temporaire (branche diag/graphiques) : ne publie rien.
+name: Diagnostic graphiques
+on:
+  push:
+    branches: ['diag/**']
+jobs:
+  graphiques:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -version
+      - run: swiftc -parse-as-library scripts/diag/graphiques.swift -o graphiques
+      - name: Cas
+        run: |
+          for c in 1 2 3 4 5; do
+            ./graphiques $c 2>&1 || echo "CAS $c : PLANTAGE (code $?)"
+            echo "-----"
+          done
