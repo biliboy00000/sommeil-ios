@@ -51,6 +51,12 @@ jobs:
         run: swift test --package-path Packages/SleepCore
       - name: Simulateur de séance
         run: swift build -c release --package-path Packages/SleepCore --product SessionSimulator
+      - name: Graphiques du rapport (aucune valeur sans couleur)
+        run: |
+          swiftc -parse-as-library App/Sources/ChartPalette.swift scripts/verifier_graphiques.swift -o verifier_graphiques
+          for c in respiration respiration-inconnue positions niveaux-v2 niveaux-v1 niveaux-vides; do
+            ./verifier_graphiques "$c"
+          done
       - name: Lecture du format en Python (scripts de référence, sur une séance simulée)
         run: |
           python3 -m venv .venv-tests

@@ -462,7 +462,8 @@ public final class NightAnalyzer {
                                breathTimes: breathTimes, breathRate: rateNear($0.start), heart: track, moving: moving)
         }
         for p in checked {
-            let percent = Int((p.ratio * 100).rounded())
+            // ratio vaut NaN quand le thorax n'est pas mesurable : Int(NaN) arrêterait l'app.
+            let percent = p.ratio.isFinite ? Int((p.ratio * 100).rounded()) : 0
             switch p.verdict {
             case .reduced:
                 let what = p.source == "son" ? "sans souffle au micro" : "repéré au mouvement"

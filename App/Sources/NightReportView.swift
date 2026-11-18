@@ -215,7 +215,7 @@ struct TimelineCard: View {
                             .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 2]))
                     }
                 }
-                .chartForegroundStyleScale(Self.levelScale(report))
+                .chartPalette(Self.levelPalette(report))
                 .chartYAxis(.hidden)
                 .chartYScale(domain: 0...1)
                 .chartXScale(domain: start...end)
@@ -230,8 +230,7 @@ struct TimelineCard: View {
                                       yStart: .value("", 0), yEnd: .value("", 1))
                             .foregroundStyle(by: .value("Position", segment.label))
                     }
-                    .chartForegroundStyleScale(["Dos": Color.indigo, "Côté gauche": Color.teal, "Côté droit": Color.mint,
-                                                "Ventre": Color.purple, "Assis ou debout": Color.orange])
+                    .chartPalette(ChartPalette(positionSegments.map(\.label), known: Self.positionColors))
                     .chartYAxis(.hidden)
                     .chartXScale(domain: start...end)
                     .chartXAxis(.hidden)
@@ -263,7 +262,7 @@ struct TimelineCard: View {
                             .foregroundStyle(by: .value("Source", point.series))
                             .symbolSize(10)
                     }
-                    .chartForegroundStyleScale(["mouvement": Color.teal, "son": Color.blue])
+                    .chartPalette(ChartPalette(breathPoints.map(\.series), known: Self.breathColors))
                     .chartYScale(domain: .automatic(includesZero: false))
                     .chartXScale(domain: start...end)
                     .chartXAxis(.hidden)
@@ -291,12 +290,30 @@ struct TimelineCard: View {
         }
     }
 
-    /// Échelle des couleurs : seulement les niveaux présents (les rapports d'avant 0.4 ont « agité », les autres « éveil »).
-    static func levelScale(_ report: NightReport) -> KeyValuePairs<String, Color> {
-        if report.blocks.contains(where: { $0.level == "eveil" }) || report.version >= 2 {
-            return ["Calme": .indigo, "Mouvements légers": .teal, "Éveil": .orange, "Pas de mesure": Color.gray.opacity(0.3)]
+    /// Couleurs des niveaux présents (les rapports d'avant 0.4 ont « agité », les autres « éveil »).
+    static func levelPalette(_ report: NightReport) -> ChartPalette {
+        ChartPalette(report.blocks.map { NightReport.levelLabel($0.level) },
+                     known: ["Calme": .indigo, "Mouvements légers": .teal, "Éveil": .orange, "Agité": .orange,
+                             "Pas de mesure": Color.gray.opacity(0.3)])
+    }
+
+    static let positionColors: KeyValuePairs<String, Color> = [
+        "Dos": .indigo, "Côté gauche": .teal, "Côté droit": .mint, "Ventre": .purple, "Assis ou debout": .orange,
+        "Inconnue": .gray,
+    ]
+
+    static let breathColors: KeyValuePairs<String, Color> = [
+        "Micro et capteurs": .indigo, "Capteurs": .teal, "Micro": .blue,
+    ]
+
+    /// Source d'une valeur de respiration, telle qu'affichée dans la légende.
+    static func breathLabel(_ source: String) -> String {
+        switch source {
+        case "mouvement+son": return "Micro et capteurs"
+        case "mouvement": return "Capteurs"
+        case "son": return "Micro"
+        default: return "Autre"
         }
-        return ["Calme": .indigo, "Mouvements légers": .teal, "Agité": .orange, "Pas de mesure": Color.gray.opacity(0.3)]
     }
 
     static func height(_ level: String) -> Double {
@@ -344,10 +361,11 @@ struct TimelineCard: View {
     }
 
     private var breathPoints: [Point] {
-        report.epochs.breathRate.enumerated().compactMap { index, rate in
+        let sources = report.epochs.breathSource
+        return report.epochs.breathRate.enumerated().compactMap { index, rate in
             guard let rate else { return nil }
             return Point(id: index, date: Date(timeIntervalSince1970: report.startUnix + (Double(index) + 0.5) * report.epochSeconds),
-                         value: rate, series: report.epochs.breathSource[index])
+                         value: rate, series: Self.breathLabel(index < sources.count ? sources[index] : ""))
         }
     }
 }
