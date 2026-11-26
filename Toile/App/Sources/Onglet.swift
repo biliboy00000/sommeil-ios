@@ -239,7 +239,7 @@ final class Onglet: NSObject, ObservableObject, Identifiable {
             actif = false
         }
         let voulues = actif ? Bloqueur.shared.listes : []
-        let identifiants = voulues.map(\.identifier)
+        let identifiants = voulues.compactMap(\.identifier)
         guard identifiants != listesInstallees else { return }
         contenu.removeAllContentRuleLists()
         for liste in voulues {

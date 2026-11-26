@@ -178,7 +178,7 @@ final class Bloqueur: ObservableObject {
         listes = nouvelles
         manifeste = m
         etat = probleme.map { Etat.erreur($0) } ?? Etat.pret
-        await nettoyer(garder: Set(nouvelles.map(\.identifier)))
+        await nettoyer(garder: Set(nouvelles.compactMap(\.identifier)))
         return true
     }
 
