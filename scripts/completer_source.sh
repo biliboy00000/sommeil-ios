@@ -1,6 +1,6 @@
 #!/bin/bash
 # Ajoute à une source SideStore les apps du dépôt qui y manquent, d'après leur dernière version
-# publiée (Sommeil : versions « v0.* », Ciné : versions « cine-v* », Sonar : versions « sonar-v* », Gadget : versions « gadget-v* »). La source se répare ainsi
+# publiée (Sommeil : « v0.* », Ciné : « cine-v* », Sonar : « sonar-v* », Gadget : « gadget-v* », Toile : « toile-v* »). La source se répare ainsi
 # toute seule si une publication a perdu une app.
 #
 #     scripts/completer_source.sh base.json
@@ -38,3 +38,4 @@ ajouter com.suivisommeil.enregistreur "v0." Sommeil.ipa Sommeil
 ajouter com.cine.pellicule "cine-v" Cine.ipa Cine
 ajouter com.sonar.scan "sonar-v" Sonar.ipa Sonar
 ajouter com.gadget.boite "gadget-v" Gadget.ipa Gadget
+ajouter com.toile.navigateur "toile-v" Toile.ipa Toile

@@ -5,9 +5,22 @@ import SleepCore
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var recorder: Recorder
+    /// Dans l'app Gadget : action pour revenir à la grille (nil dans l'app Sommeil seule).
+    @Environment(\.gadgetExit) private var gadgetExit
+
+    /// L'onglet « Gadgets » ne se sélectionne pas : il ramène à la grille des gadgets.
+    private var selection: Binding<AppTab> {
+        Binding(get: { model.tab }, set: { tab in
+            if tab == .gadgets {
+                gadgetExit?()
+            } else {
+                model.tab = tab
+            }
+        })
+    }
 
     var body: some View {
-        TabView(selection: $model.tab) {
+        TabView(selection: selection) {
             TonightView()
                 .tabItem { Label("Ce soir", systemImage: "moon.stars.fill") }
                 .tag(AppTab.tonight)
@@ -17,9 +30,14 @@ struct RootView: View {
             NightsView()
                 .tabItem { Label("Nuits", systemImage: "calendar") }
                 .tag(AppTab.nights)
-            SettingsView()
+            SommeilSettingsView()
                 .tabItem { Label("Réglages", systemImage: "gearshape.fill") }
                 .tag(AppTab.settings)
+            if gadgetExit != nil {
+                Color.clear
+                    .tabItem { Label("Gadgets", systemImage: "square.grid.2x2.fill") }
+                    .tag(AppTab.gadgets)
+            }
         }
         .tint(.indigo)
         .fullScreenCover(isPresented: Binding(get: { recorder.isRecording || recorder.isWaiting }, set: { _ in })) {
@@ -55,7 +73,7 @@ struct TonightView: View {
                     HStack(spacing: 10) {
                         batteryTile
                         Button { showRenewal = true } label: { installationTile }
-                            .buttonStyle(PressableStyle())
+                            .buttonStyle(SommeilPressableStyle())
                         storageTile
                     }
                     if let last = model.sessions.first(where: \.isNight) ?? model.sessions.first {
@@ -64,7 +82,7 @@ struct TonightView: View {
                         } label: {
                             LastSessionCard(item: last)
                         }
-                        .buttonStyle(PressableStyle())
+                        .buttonStyle(SommeilPressableStyle())
                     }
                     toolsSection
                     Text(Texts.medical)
@@ -154,10 +172,10 @@ struct TonightView: View {
             Button {
                 withAnimation(.snappy) { model.tab = .heart }
             } label: {
-                ToolRow(icon: "heart.fill", tint: Palette.heart, title: "Cœur en direct",
+                ToolRow(icon: "heart.fill", tint: SommeilPalette.heart, title: "Cœur en direct",
                         subtitle: "Pose le téléphone sur ta poitrine et regarde ton cœur battre.")
             }
-            .buttonStyle(PressableStyle())
+            .buttonStyle(SommeilPressableStyle())
             Button {
                 recorder.start(kind: .guided) { error in
                     if let error { model.alert = AlertMessage(title: "Impossible de démarrer", message: error) }
@@ -166,7 +184,7 @@ struct TonightView: View {
                 ToolRow(icon: "list.number", tint: .teal, title: "Test guidé de 10 minutes",
                         subtitle: "Une voix te guide : sur le dos, mouvements, côtés, deux arrêts de respiration.")
             }
-            .buttonStyle(PressableStyle())
+            .buttonStyle(SommeilPressableStyle())
         }
     }
 }
@@ -192,7 +210,7 @@ struct NightHeroCard: View {
                 Spacer()
                 Image(systemName: "moon.stars.fill")
                     .font(.system(size: 38))
-                    .foregroundStyle(Palette.moon)
+                    .foregroundStyle(SommeilPalette.moon)
                     .symbolEffect(.pulse.byLayer, options: .repeating.speed(0.3))
             }
             HStack(spacing: 20) {
@@ -208,24 +226,24 @@ struct NightHeroCard: View {
             } label: {
                 Label("Commencer la nuit", systemImage: "moon.zzz.fill")
                     .font(.headline)
-                    .foregroundStyle(Palette.nightTop)
+                    .foregroundStyle(SommeilPalette.nightTop)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
                     .background(.white, in: Capsule())
             }
-            .buttonStyle(PressableStyle())
+            .buttonStyle(SommeilPressableStyle())
             .sensoryFeedback(.impact(weight: .medium), trigger: taps)
         }
         .padding(20)
         .background {
             ZStack {
-                LinearGradient(colors: [Palette.nightTop, Palette.nightBottom], startPoint: .topLeading,
+                LinearGradient(colors: [SommeilPalette.nightTop, SommeilPalette.nightBottom], startPoint: .topLeading,
                                endPoint: .bottomTrailing)
                 Starfield(count: 28)
             }
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         }
-        .shadow(color: Palette.nightBottom.opacity(0.35), radius: 18, y: 8)
+        .shadow(color: SommeilPalette.nightBottom.opacity(0.35), radius: 18, y: 8)
     }
 
     private func heroValue(icon: String, label: String, value: String) -> some View {
@@ -353,7 +371,7 @@ struct RenewalSheet: View {
                     VStack(alignment: .leading, spacing: 12) {
                         step(1, "Ouvre l'app LocalDevVPN et touche « Connect ».")
                         step(2, "Ouvre SideStore, onglet « My Apps ».")
-                        step(3, "Touche « Refresh All » (ou le bouton « 7 DAYS » à côté de Sommeil).")
+                        step(3, "Touche « Refresh All » (ou le bouton « 7 DAYS » à côté de \(HostApp.name)).")
                         step(4, "Tu peux ensuite déconnecter LocalDevVPN.")
                     }
                     Text("Astuce : une automatisation Raccourcis (tous les jours, par exemple à midi) peut le faire "

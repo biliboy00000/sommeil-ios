@@ -5,7 +5,7 @@ import SleepCore
 // Éléments d'interface partagés : cartes, anneaux, tuiles, bouton « maintenir pour arrêter »,
 // et l'aspect « verre » d'iOS 26 quand il est disponible.
 
-enum Palette {
+enum SommeilPalette {
     /// Bleu nuit du thème (dégradé de la carte « Ce soir » et de l'écran de nuit).
     static let nightTop = Color(red: 0.07, green: 0.07, blue: 0.20)
     static let nightBottom = Color(red: 0.20, green: 0.13, blue: 0.42)
@@ -56,7 +56,7 @@ extension View {
 }
 
 /// Bouton qui s'enfonce légèrement quand on le touche (cartes et tuiles).
-struct PressableStyle: ButtonStyle {
+struct SommeilPressableStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.97 : 1)

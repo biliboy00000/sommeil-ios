@@ -1,4 +1,4 @@
-# App Gadget : réunit plusieurs gadgets (Ciné, Sonar…) dans une seule app, pour n'occuper qu'une place
+# App Gadget : réunit plusieurs gadgets (Sommeil, Ciné, Sonar…) dans une seule app, pour n'occuper qu'une place
 # dans SideStore. Le code de chaque gadget reste dans son dossier (Cine/, Sonar/) et est partagé avec son
 # app seule ; seuls les points d'entrée (App/Entry de chaque gadget) sont laissés de côté.
 # Transformé en Gadget.xcodeproj par XcodeGen (sur le Mac de GitHub).
@@ -19,6 +19,8 @@ settings:
 packages:
   FilmCore:
     path: ../Cine/Packages/FilmCore
+  SleepCore:
+    path: ../Packages/SleepCore
 
 targets:
   Gadget:
@@ -28,6 +30,8 @@ targets:
       - path: App/Sources
       - path: App/Resources
       - path: ../Shared
+      # Gadget Sommeil (son point d'entrée, App/Entry, et son extension de notification sont laissés de côté)
+      - path: ../App/Sources
       # Gadget Ciné
       - path: ../Cine/App/Sources
       # Gadget Sonar
@@ -36,6 +40,7 @@ targets:
       - path: ../Telecommande/App/Sources
     dependencies:
       - package: FilmCore
+      - package: SleepCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gadget.boite
@@ -66,7 +71,14 @@ targets:
           Ciné utilise l'appareil photo pour ses photos et vidéos ; Sonar s'en sert seulement pour suivre
           la position du téléphone pendant un scan ; Télécommande, pour scanner le QR code de ton PC.
         NSMicrophoneUsageDescription: >-
+          Sommeil enregistre les bruits de la nuit (respiration, ronflements), le son reste sur ton iPhone ;
           Ciné enregistre le son de tes vidéos ; Sonar écoute les échos des sons qu'il émet.
+        NSMotionUsageDescription: >-
+          Sommeil mesure avec les capteurs de mouvement les battements du cœur, la respiration, la position
+          et les mouvements.
+        NSBluetoothAlwaysUsageDescription: >-
+          Sommeil se sert du Bluetooth seulement pour enregistrer une ceinture cardio pendant la nuit, pour
+          vérifier la précision du pouls mesuré par l'iPhone.
         NSPhotoLibraryAddUsageDescription: >-
           Ciné enregistre tes photos et tes vidéos dans l'app Photos.
         NSLocationWhenInUseUsageDescription: >-
@@ -75,10 +87,12 @@ targets:
           Télécommande se connecte au programme de ton PC sur le Wi-Fi de la maison.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Sommeil : l'enregistrement continue écran verrouillé (micro), avec la ceinture cardio (Bluetooth).
         # Télécommande : le son du PC continue sur le téléphone écran verrouillé.
         UIBackgroundModes:
           - audio
-        # Journal de Ciné et scans de Sonar visibles dans l'app Fichiers (« Sur mon iPhone › Gadget »).
+          - bluetooth-central
+        # Nuits de Sommeil, journal de Ciné et scans de Sonar visibles dans l'app Fichiers (« Sur mon iPhone › Gadget »).
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         ITSAppUsesNonExemptEncryption: false

@@ -1,0 +1,81 @@
+# Navigateur Toile (moteur de Safari, bloqueur de pubs, SponsorBlock, extras YouTube).
+# Transformé en Toile.xcodeproj par XcodeGen sur le Mac de GitHub (.github/workflows/toile.yml).
+# Le dossier App/Filtres (listes du bloqueur) est fabriqué pendant la compilation, il n'est pas dans le dépôt.
+name: Toile
+options:
+  bundleIdPrefix: com.toile
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: fr
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  Toile:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/Sources
+      - path: App/Resources
+      # Listes du bloqueur (manifeste.json et *.json.deflate), copiées telles quelles dans l'app.
+      - path: App/Filtres
+        type: folder
+        optional: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.toile.navigateur
+        PRODUCT_NAME: Toile
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: NO
+        CODE_SIGN_STYLE: Manual
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Toile
+        CFBundleDevelopmentRegion: fr
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Le son des vidéos continue écran verrouillé.
+        UIBackgroundModes:
+          - audio
+        # Demandés seulement quand un site en a besoin (visio, envoi de photo, carte).
+        NSCameraUsageDescription: >-
+          Un site peut demander l'appareil photo (visio, envoi d'une photo). Toile te demande à chaque fois.
+        NSMicrophoneUsageDescription: >-
+          Un site peut demander le micro (visio, message vocal). Toile te demande à chaque fois.
+        NSLocationWhenInUseUsageDescription: >-
+          Un site peut demander ta position (carte, météo). Toile te demande à chaque fois.
+        # Téléchargements visibles dans l'app Fichiers (« Sur mon iPhone › Toile »).
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        # Ouvrir un lien depuis un Raccourci : toile://exemple.com
+        CFBundleURLTypes:
+          - CFBundleURLName: com.toile.navigateur
+            CFBundleURLSchemes:
+              - toile
+        ITSAppUsesNonExemptEncryption: false
+
+schemes:
+  Toile:
+    build:
+      targets:
+        Toile: all
+    run:
+      config: Debug
+    archive:
+      config: Release

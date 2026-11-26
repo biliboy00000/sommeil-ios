@@ -123,7 +123,7 @@ struct KeyFigures: View {
                          value: TimeText.duration(s.restSeconds),
                          detail: "calme \(TimeText.duration(s.calmSeconds)) · agité \(TimeText.duration(s.agitatedSeconds))")
             }
-            StatTile(icon: "heart.fill", tint: Palette.heart, title: "Pouls",
+            StatTile(icon: "heart.fill", tint: SommeilPalette.heart, title: "Pouls",
                      value: s.heartMedian.map { "\(Int($0.rounded())) bpm" } ?? "—",
                      detail: heartDetail(s))
             StatTile(icon: "lungs.fill", tint: .teal, title: "Respiration",
@@ -242,10 +242,10 @@ struct TimelineCard: View {
                 lane("Pouls (bpm)") {
                     Chart(heartPoints) { point in
                         LineMark(x: .value("Heure", point.date), y: .value("Pouls", point.value), series: .value("", point.series))
-                            .foregroundStyle(Palette.heart)
+                            .foregroundStyle(SommeilPalette.heart)
                             .interpolationMethod(.monotone)
                         PointMark(x: .value("Heure", point.date), y: .value("Pouls", point.value))
-                            .foregroundStyle(Palette.heart)
+                            .foregroundStyle(SommeilPalette.heart)
                             .symbolSize(12)
                     }
                     .chartYScale(domain: .automatic(includesZero: false))

@@ -1,7 +1,8 @@
 import SwiftUI
 import SleepCore
+import UniformTypeIdentifiers
 
-struct SettingsView: View {
+struct SommeilSettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var recorder: Recorder
@@ -15,6 +16,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if HostApp.isGadget {
+                    ImportSommeilSection()
+                }
                 reminderSection
                 recordingSection
                 ReferenceSection()
@@ -44,6 +48,16 @@ struct SettingsView: View {
         }
     }
 
+    private var reminderFooter: String {
+        let choice = HostApp.hasNotificationExtension
+            ? "Appuie longuement dessus : une barre permet de choisir quand l'enregistrement commence "
+            : "Touche « Oui… » : une barre permet de choisir quand l'enregistrement commence "
+        return "Chaque soir à cette heure, une notification « Démarrer la nuit ? ». " + choice
+            + "(tout de suite ou jusqu'à 2 h plus tard). « Oui » ouvre l'app un instant : iOS l'exige pour "
+            + "allumer le micro. Si tu utilises le mode de concentration Sommeil, ajoute l'app \(HostApp.name) "
+            + "à ses apps autorisées."
+    }
+
     private var reminderSection: some View {
         Section {
             Toggle(isOn: $settings.bedtimeReminder.animation(.snappy)) {
@@ -60,18 +74,15 @@ struct SettingsView: View {
                 .disabled(notificationsDenied)
             }
             if notificationsDenied {
-                Text("Les notifications de Sommeil sont refusées : Réglages de l'iPhone › Notifications › "
-                     + "Sommeil › Autoriser les notifications.")
+                Text("Les notifications de \(HostApp.name) sont refusées : Réglages de l'iPhone › Notifications › "
+                     + "\(HostApp.name) › Autoriser les notifications.")
                     .font(.footnote)
                     .foregroundStyle(.orange)
             }
         } header: {
             Text("Rappel du soir")
         } footer: {
-            Text("Chaque soir à cette heure, une notification « Démarrer la nuit ? ». Appuie longuement dessus : "
-                 + "une barre permet de choisir quand l'enregistrement commence (tout de suite ou jusqu'à 2 h plus "
-                 + "tard). « Oui » ouvre l'app un instant : iOS l'exige pour allumer le micro. Si tu utilises le "
-                 + "mode de concentration Sommeil, ajoute l'app Sommeil à ses apps autorisées.")
+            Text(reminderFooter)
         }
     }
 
@@ -132,8 +143,11 @@ struct SettingsView: View {
         } header: {
             Text("Installation")
         } footer: {
-            Text("Mises à jour : SideStore les propose si tu as ajouté la source de Sommeil (onglet Sources). "
-                 + "Sinon, télécharge le dernier Sommeil.ipa dans Safari et ouvre-le dans SideStore. Tes nuits sont gardées.")
+            Text(HostApp.isGadget
+                 ? "Mises à jour : SideStore les propose dans la source « Sommeil et Gadget » (onglet Sources). "
+                    + "Tes nuits sont gardées."
+                 : "Mises à jour : SideStore les propose si tu as ajouté la source de Sommeil (onglet Sources). "
+                    + "Sinon, télécharge le dernier Sommeil.ipa dans Safari et ouvre-le dans SideStore. Tes nuits sont gardées.")
         }
     }
 
@@ -251,3 +265,114 @@ struct StrapPairingSheet: View {
         }
     }
 }
+
+
+/// App Gadget : reprendre les nuits enregistrées par l'app Sommeil seule.
+struct ImportSommeilSection: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var picking = false
+    @State private var importing = false
+    @State private var outcome: String?
+
+    var body: some View {
+        Section {
+            Button {
+                picking = true
+            } label: {
+                HStack {
+                    Label("Reprendre les nuits de l'app Sommeil", systemImage: "square.and.arrow.down.on.square")
+                    if importing {
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+            }
+            .disabled(importing)
+            .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
+                switch result {
+                case .success(let folder): run(folder)
+                case .failure(let error): outcome = "Import impossible : \(error.localizedDescription)"
+                }
+            }
+            if let outcome {
+                Text(outcome).font(.footnote)
+            }
+        } header: {
+            Text("Ancienne app Sommeil")
+        } footer: {
+            Text("Choisis le dossier « Sur mon iPhone › Sommeil ». Les nuits sont copiées ici ; celles déjà "
+                 + "présentes sont laissées. À faire avant de désactiver l'app Sommeil dans SideStore : une app "
+                 + "désactivée n'apparaît plus dans Fichiers. Les réglages (heure du réveil, rappel du soir) sont à refaire.")
+        }
+    }
+
+    private func run(_ folder: URL) {
+        importing = true
+        outcome = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            let message = SessionImport.importSessions(from: folder)
+            DispatchQueue.main.async {
+                importing = false
+                outcome = message
+                model.refresh()
+                model.analysis.enqueueMissing(model.sessions, excluding: model.recorder.sessionDirectory)
+            }
+        }
+    }
+}
+
+/// Copie des séances d'un autre dossier (celui de l'app Sommeil seule) vers celui de l'app.
+enum SessionImport {
+    /// `folder` : le dossier de l'app Sommeil, ou son dossier « Seances ». Renvoie le message à afficher.
+    static func importSessions(from folder: URL) -> String {
+        let access = folder.startAccessingSecurityScopedResource()
+        defer { if access { folder.stopAccessingSecurityScopedResource() } }
+        let manager = FileManager.default
+        let target = Recorder.sessionsRoot
+        var source = folder
+        let nested = folder.appendingPathComponent("Seances", isDirectory: true)
+        if folder.lastPathComponent != "Seances", manager.fileExists(atPath: nested.path) {
+            source = nested
+        }
+        if source.standardizedFileURL.resolvingSymlinksInPath().path == target.standardizedFileURL.resolvingSymlinksInPath().path {
+            return "C'est déjà le dossier de cette app. Choisis « Sur mon iPhone › Sommeil »."
+        }
+        guard let names = try? manager.contentsOfDirectory(atPath: source.path) else {
+            return "Impossible de lire « \(folder.lastPathComponent) ». Choisis « Sur mon iPhone › Sommeil »."
+        }
+        try? manager.createDirectory(at: target, withIntermediateDirectories: true)
+        var copied = 0
+        var present = 0
+        var failed = 0
+        for name in names.sorted() where !name.hasPrefix(".") {
+            let from = source.appendingPathComponent(name, isDirectory: true)
+            var isDirectory: ObjCBool = false
+            guard manager.fileExists(atPath: from.path, isDirectory: &isDirectory), isDirectory.boolValue,
+                  (try? SessionInfo.read(from: from)) != nil else { continue }
+            let to = target.appendingPathComponent(name, isDirectory: true)
+            if manager.fileExists(atPath: to.path) {
+                present += 1
+                continue
+            }
+            do {
+                // Sur le même iPhone, la copie est presque instantanée et ne prend pas de place en plus (APFS).
+                try manager.copyItem(at: from, to: to)
+                copied += 1
+            } catch {
+                failed += 1
+                try? manager.removeItem(at: to)
+                Diagnostics.shared.log("Import de la séance \(name) impossible : \(error.localizedDescription)")
+            }
+        }
+        Diagnostics.shared.log("Import depuis « \(folder.lastPathComponent) » : \(copied) copiées, "
+                               + "\(present) déjà là, \(failed) en échec")
+        if copied == 0 && present == 0 && failed == 0 {
+            return "Aucune nuit dans « \(folder.lastPathComponent) ». Choisis « Sur mon iPhone › Sommeil »."
+        }
+        var parts = ["\(copied) nuit\(copied > 1 ? "s" : "") reprise\(copied > 1 ? "s" : "")"]
+        if present > 0 { parts.append("\(present) déjà là") }
+        if failed > 0 { parts.append("\(failed) en échec (voir le journal de diagnostic)") }
+        return parts.joined(separator: ", ") + "."
+    }
+}
+

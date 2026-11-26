@@ -23,6 +23,17 @@ final class NightReminder: NSObject, UNUserNotificationCenterDelegate {
     private var handler: ((Request) -> Void)?
     private var queued: [Request] = []
 
+    /// App Gadget : ouvre le gadget Sommeil quand une réponse arrive (même si un autre gadget est ouvert).
+    var presentApp: (() -> Void)? {
+        didSet {
+            guard presentApp != nil, wantsPresentation else { return }
+            wantsPresentation = false
+            presentApp?()
+        }
+    }
+    /// Une réponse est arrivée avant que l'app Gadget ait installé `presentApp` (lancement par la notification).
+    private var wantsPresentation = false
+
     /// À appeler au lancement de l'app, avant la fin de `didFinishLaunching`.
     func install() {
         let center = UNUserNotificationCenter.current()
@@ -58,8 +69,11 @@ final class NightReminder: NSObject, UNUserNotificationCenterDelegate {
     private func makeContent(defaultDelay: Int) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = "Démarrer la nuit ?"
-        content.body = "Appuie longuement : choisis sur la barre quand l'enregistrement commence "
-            + "(tout de suite ou jusqu'à 2 h plus tard), puis « Oui »."
+        content.body = HostApp.hasNotificationExtension
+            ? "Appuie longuement : choisis sur la barre quand l'enregistrement commence "
+                + "(tout de suite ou jusqu'à 2 h plus tard), puis « Oui »."
+            : "Touche « Oui… » : choisis sur la barre quand l'enregistrement commence "
+                + "(tout de suite ou jusqu'à 2 h plus tard)."
         content.sound = .default
         content.categoryIdentifier = BedtimeReminder.category
         content.userInfo = [BedtimeReminder.defaultDelayKey: NightDelay.clamp(Double(defaultDelay))]
@@ -135,6 +149,7 @@ final class NightReminder: NSObject, UNUserNotificationCenterDelegate {
         Diagnostics.shared.log("Rappel du soir : réponse « \(action) »")
         DispatchQueue.main.async {
             if let request {
+                if let presentApp = self.presentApp { presentApp() } else { self.wantsPresentation = true }
                 if let handler = self.handler { handler(request) } else { self.queued.append(request) }
             }
             completionHandler()

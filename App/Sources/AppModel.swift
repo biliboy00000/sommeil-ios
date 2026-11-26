@@ -170,6 +170,8 @@ struct StartSheetRequest: Identifiable {
 /// Onglets de l'app.
 enum AppTab: Hashable {
     case tonight, heart, nights, settings
+    /// Dans l'app Gadget seulement : retour à la grille des gadgets.
+    case gadgets
 }
 
 /// État général de l'app, partagé entre les écrans.

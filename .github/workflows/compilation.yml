@@ -1,10 +1,11 @@
-# Compilation automatique sur un Mac de GitHub, à chaque modification.
+# Vérification de Sommeil sur un Mac de GitHub, à chaque modification.
 # 1. Tests du cœur (SleepCore).
-# 2. Compilation de l'app pour iPhone, sans signature (SideStore signe ensuite avec ton identifiant Apple).
-# 3. Publication de Sommeil.ipa et de la source SideStore (source.json) dans « Releases ».
-# L'app Ciné (dossier Cine/) a sa propre compilation : .github/workflows/cine.yml.
-# L'app Sonar (dossier Sonar/) aussi : .github/workflows/sonar.yml.
-# Ciné et Sonar sont publiés ensemble dans l'app Gadget : .github/workflows/gadget.yml.
+# 2. Compilation de l'app Sommeil seule pour iPhone, sans signature (vérification seulement).
+# Sommeil est publié dans l'app Gadget (.github/workflows/gadget.yml), avec Ciné, Sonar et Télécommande.
+# L'app Sommeil seule reste dans la source SideStore à sa dernière version (0.4.26), et sa dernière
+# version publiée reste la « latest » du dépôt : c'est elle qui porte la source (source.json).
+# Le fichier Sommeil.ipa reste téléchargeable dans les « artifacts » de chaque compilation.
+# Le navigateur Toile a sa propre compilation : .github/workflows/toile.yml.
 name: Compilation
 
 on:
@@ -19,6 +20,9 @@ on:
       - 'Telecommande/**'
       - 'Shared/**'
       - '.github/workflows/gadget.yml'
+      - 'Toile/**'
+      - '.github/workflows/toile.yml'
+      - '.github/workflows/filtres.yml'
   pull_request:
     paths-ignore:
       - 'Cine/**'
@@ -29,10 +33,13 @@ on:
       - 'Telecommande/**'
       - 'Shared/**'
       - '.github/workflows/gadget.yml'
+      - 'Toile/**'
+      - '.github/workflows/toile.yml'
+      - '.github/workflows/filtres.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: compilation-${{ github.ref }}
@@ -69,10 +76,6 @@ jobs:
     runs-on: macos-26
     needs: tests
     timeout-minutes: 40
-    # Une seule publication à la fois (Sommeil ou Ciné) : la source SideStore est commune.
-    concurrency:
-      group: publication-sidestore
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Installer XcodeGen
@@ -103,15 +106,6 @@ jobs:
           plutil -p Payload/Sommeil.app/PlugIns/SommeilNotification.appex/Info.plist | grep -E "CFBundleIdentifier|UNNotification|NSExtensionPrincipalClass"
           zip -qry Sommeil.ipa Payload
           ls -lh Sommeil.ipa
-      - name: Fabriquer la source SideStore (mises à jour depuis l'iPhone)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # On garde l'entrée de Ciné de la source actuelle (remise d'après sa dernière version si elle manque).
-          scripts/source_actuelle.sh base.json
-          scripts/completer_source.sh base.json
-          python3 scripts/source_sidestore.py Payload/Sommeil.app Sommeil.ipa "v0.4.${{ github.run_number }}" source.json \
-            --base base.json --exiger com.cine.pellicule
       - name: Garder le journal de compilation
         if: always()
         uses: actions/upload-artifact@v4
@@ -119,23 +113,8 @@ jobs:
           name: journal-compilation
           path: build.log
           if-no-files-found: ignore
-      - name: Garder l'app et le paquet
+      - name: Garder l'app
         uses: actions/upload-artifact@v4
         with:
           name: Sommeil-ipa
-          path: |
-            Sommeil.ipa
-            source.json
-      - name: Publier la version (lien de téléchargement fixe)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.4.${{ github.run_number }}
-          name: Sommeil 0.4.${{ github.run_number }}
-          make_latest: true
-          files: |
-            Sommeil.ipa
-            source.json
-          body: |
-            Version compilée automatiquement depuis ${{ github.sha }}.
-            À installer avec SideStore, directement sur l'iPhone : mode d'emploi dans INSTALLATION.md.
+          path: Sommeil.ipa

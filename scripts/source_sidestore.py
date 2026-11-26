@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
 Écrit la « source » SideStore (format des sources AltStore) de ce dépôt, pour que SideStore
-propose tout seul les mises à jour des apps : Sommeil et Gadget (plus Ciné et Sonar seuls, figés).
+propose tout seul les mises à jour des apps : Gadget et Toile (plus Sommeil, Ciné et Sonar seuls, figés).
 
     python3 scripts/source_sidestore.py <App.app> <App.ipa> <tag> <sortie.json> [--base <source.json>] [--exiger <identifiant>]
 
 L'app est reconnue par son identifiant (Info.plist). Avec --base, les autres apps de la source
-existante sont gardées : chaque compilation (Sommeil ou Ciné) ne remplace que sa propre entrée.
+existante sont gardées : chaque compilation (Gadget ou Toile) ne remplace que sa propre entrée.
 Avec --exiger, le script s'arrête en erreur si cette app manque dans la source finale.
 
-Utilisé par la compilation automatique de GitHub, qui publie source.json avec la dernière version
-de Sommeil (« latest »). Lien à ajouter dans SideStore (onglet Sources, « + ») :
+Utilisé par la compilation automatique de GitHub, qui publie source.json dans la version marquée
+« latest » (la dernière de Sommeil seul). Lien à ajouter dans SideStore (onglet Sources, « + ») :
     https://github.com/biliboy00000/sommeil-ios/releases/latest/download/source.json
 """
 import datetime
@@ -62,15 +62,30 @@ APPS = {
         "name": "Gadget",
         "subtitle": "Tous les gadgets dans une seule app",
         "localizedDescription": (
-            "Réunit les gadgets dans une seule app (une seule place dans SideStore) : Ciné, l'appareil "
-            "photo au rendu pellicule, et Sonar, le scanner de pièce par le son. D'autres suivront."),
+            "Réunit les gadgets dans une seule app (une seule place dans SideStore) : Sommeil (nuit, cœur "
+            "et respiration), Ciné (photos au rendu pellicule), Sonar (scanner une pièce par le son) et "
+            "Télécommande (piloter le PC)."),
         "iconURL": BRUT + "Gadget/App/Resources/Assets.xcassets/AppIcon.appiconset/icon.png",
         "tintColor": "#F5B342",
         "category": "utilities",
         "ipa": "Gadget.ipa",
     },
+    "com.toile.navigateur": {
+        "name": "Toile",
+        "subtitle": "Navigateur avec bloqueur de pubs et SponsorBlock",
+        "localizedDescription": (
+            "Navigateur (moteur de Safari) avec bloqueur de pubs et de traqueurs (listes d'uBlock : EasyList, "
+            "EasyPrivacy, Liste FR…, mises à jour chaque semaine), SponsorBlock et extras YouTube : pubs vidéo "
+            "retirées, lecture en arrière-plan, image dans l'image. Onglets privés."),
+        "iconURL": BRUT + "Toile/App/Resources/Assets.xcassets/AppIcon.appiconset/icon.png",
+        "tintColor": "#147F79",
+        "category": "utilities",
+        "ipa": "Toile.ipa",
+    },
 }
-ORDRE = list(APPS)
+# Ordre d'affichage dans SideStore : les apps à jour d'abord, puis les apps seules figées.
+ORDRE = ["com.gadget.boite", "com.toile.navigateur", "com.suivisommeil.enregistreur", "com.cine.pellicule",
+         "com.sonar.scan"]
 
 
 def entree(app, ipa, tag):

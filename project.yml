@@ -24,7 +24,11 @@ targets:
     platform: iOS
     sources:
       - path: App/Sources
+      # Point d'entrée de l'app seule (l'app Gadget a le sien et ouvre Sommeil par SommeilRoot).
+      - path: App/Entry
       - path: App/Resources
+      # Code commun avec l'app Gadget (retour à la grille des gadgets).
+      - path: Shared
     dependencies:
       - package: SleepCore
       # Barre de 0 à 2 h dans la notification « Démarrer la nuit ? » (appui long).

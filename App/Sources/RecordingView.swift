@@ -11,7 +11,7 @@ struct RecordingView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [.black, Palette.nightTop, Palette.nightBottom.opacity(0.7)],
+            LinearGradient(colors: [.black, SommeilPalette.nightTop, SommeilPalette.nightBottom.opacity(0.7)],
                            startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
             Starfield(count: 50)
@@ -44,13 +44,13 @@ struct RecordingView: View {
                 let remaining = max(0, until.timeIntervalSince(context.date))
                 let total = max(60, Double(recorder.waitTotalSeconds))
                 ZStack {
-                    ProgressRing(progress: 1 - remaining / total, lineWidth: 6, tint: Palette.moon,
+                    ProgressRing(progress: 1 - remaining / total, lineWidth: 6, tint: SommeilPalette.moon,
                                  track: .white.opacity(0.12))
                         .frame(width: 250, height: 250)
                     VStack(spacing: 6) {
                         Image(systemName: "moon.zzz.fill")
                             .font(.title2)
-                            .foregroundStyle(Palette.moon)
+                            .foregroundStyle(SommeilPalette.moon)
                             .symbolEffect(.pulse)
                         Text(Self.countdown(remaining))
                             .font(.system(size: 54, weight: .light, design: .rounded))
@@ -155,7 +155,7 @@ struct RecordingView: View {
         ZStack {
             if let remaining = live.calibrationRemaining {
                 ProgressRing(progress: 1 - remaining / Recorder.calibrationSeconds, lineWidth: 7,
-                             tint: Palette.moon, track: .white.opacity(0.12))
+                             tint: SommeilPalette.moon, track: .white.opacity(0.12))
                     .frame(width: 240, height: 240)
             } else {
                 BreathingHalo()
@@ -170,7 +170,7 @@ struct RecordingView: View {
                 if let remaining = live.calibrationRemaining {
                     Text("calibration : \(Int(remaining.rounded(.up))) s")
                         .font(.subheadline)
-                        .foregroundStyle(Palette.moon)
+                        .foregroundStyle(SommeilPalette.moon)
                         .monospacedDigit()
                 } else {
                     Text("enregistré")
@@ -226,7 +226,7 @@ struct RecordingView: View {
             } else {
                 Label("Bonne nuit", systemImage: "moon.stars.fill")
                     .font(.headline)
-                    .foregroundStyle(Palette.moon)
+                    .foregroundStyle(SommeilPalette.moon)
                 if let tilt = live.calibrationTilt, tilt > Calibration.maxPlausibleTilt {
                     Text("Le téléphone était incliné de \(Int(tilt.rounded()))° pendant la calibration : "
                          + "si tu n'étais pas sur le dos, recommence-la.")
@@ -326,7 +326,7 @@ struct BreathingHalo: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(RadialGradient(colors: [Palette.nightBottom.opacity(0.9), .clear],
+                .fill(RadialGradient(colors: [SommeilPalette.nightBottom.opacity(0.9), .clear],
                                      center: .center, startRadius: 10, endRadius: 140))
                 .scaleEffect(expanded ? 1.08 : 0.86)
             Circle()

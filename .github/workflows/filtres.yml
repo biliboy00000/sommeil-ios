@@ -1,0 +1,51 @@
+# Listes du bloqueur de Toile, remises à jour chaque semaine sans recompiler l'app.
+# Téléchargées, converties pour WebKit, vérifiées par le vrai WebKit (sur le Mac de GitHub),
+# puis publiées dans la version « filtres » du dépôt, où Toile va les chercher une fois par semaine.
+name: Filtres
+
+on:
+  schedule:
+    # Le lundi à 4 h 23 (heure de Paris en hiver).
+    - cron: '23 3 * * 1'
+  push:
+    branches: [main]
+    paths:
+      - 'Toile/filtres/**'
+      - '.github/workflows/filtres.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: filtres
+  cancel-in-progress: false
+
+jobs:
+  filtres:
+    name: Listes du bloqueur
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Conversion pour WebKit
+        run: python3 Toile/filtres/convertir.py filtres-sortie
+      - name: Vérification des règles par WebKit
+        timeout-minutes: 15
+        run: |
+          swiftc -O -o verifier Toile/filtres/verifier.swift
+          ./verifier filtres-sortie
+          python3 Toile/filtres/convertir.py --retirer filtres-sortie
+          python3 -c "import json; m=json.load(open('filtres-sortie/manifeste.json')); print(m['version'], [(f['nom'], f['regles']) for f in m['fichiers']])"
+      - name: Publier dans la version « filtres »
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view filtres --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create filtres --repo "$GITHUB_REPOSITORY" --latest=false \
+              --title "Filtres du bloqueur (Toile)" \
+              --notes "Listes du bloqueur de pubs de Toile (EasyList, EasyPrivacy, Liste FR, uBlock filters, Peter Lowe), converties pour WebKit. Mises à jour chaque semaine ; Toile les télécharge toute seule."
+          fi
+          # Les listes d'abord, le manifeste en dernier : Toile vérifie l'empreinte de chaque fichier.
+          gh release upload filtres filtres-sortie/*.json.deflate --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload filtres filtres-sortie/manifeste.json --repo "$GITHUB_REPOSITORY" --clobber

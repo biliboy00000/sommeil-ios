@@ -1,12 +1,24 @@
 import SwiftUI
+import UIKit
 
 @main
 struct GadgetApp: App {
+    @UIApplicationDelegateAdaptor(GadgetAppDelegate.self) private var delegate
+
     var body: some Scene {
         WindowGroup {
             GadgetHome()
                 .preferredColorScheme(.dark)
         }
+    }
+}
+
+final class GadgetAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // Sommeil : rapports d'Apple et rappel du soir (sa réponse peut être ce qui a ouvert l'app).
+        SommeilLaunch.didFinishLaunching()
+        return true
     }
 }
 
@@ -54,6 +66,14 @@ struct GadgetHome: View {
         .fullScreenCover(item: $open) { entry in
             entry.makeView()
                 .environment(\.gadgetExit, { open = nil })
+        }
+        .onAppear {
+            // Réponse au rappel du soir « Démarrer la nuit ? » : on ouvre Sommeil.
+            NightReminder.shared.presentApp = {
+                guard let sommeil = Catalogue.sommeil, open?.id != sommeil.id else { return }
+                lastID = sommeil.id
+                open = sommeil
+            }
         }
     }
 }

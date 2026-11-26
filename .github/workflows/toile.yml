@@ -1,0 +1,117 @@
+# Compilation du navigateur Toile sur un Mac de GitHub.
+# 1. Listes du bloqueur : téléchargées, converties pour WebKit, vérifiées par le vrai WebKit, mises dans l'app.
+# 2. Compilation de l'app pour iPhone, sans signature (SideStore signe avec ton identifiant Apple).
+# 3. Publication de Toile.ipa (version « toile-v0.1.N », pas marquée comme la dernière : le lien
+#    « latest » reste celui qui porte la source) et ajout de Toile dans la source SideStore commune.
+# Les listes sont aussi remises à jour chaque semaine, sans recompiler l'app : .github/workflows/filtres.yml.
+name: Toile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Toile/**'
+      - '.github/workflows/toile.yml'
+  pull_request:
+    paths:
+      - 'Toile/**'
+      - '.github/workflows/toile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: toile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: App iPhone (Toile)
+    runs-on: macos-26
+    timeout-minutes: 45
+    # Une seule publication à la fois : la source SideStore est commune.
+    concurrency:
+      group: publication-sidestore
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Listes du bloqueur (conversion pour WebKit)
+        run: python3 Toile/filtres/convertir.py filtres-sortie
+      - name: Vérification des règles par WebKit
+        timeout-minutes: 15
+        run: |
+          swiftc -O -o verifier Toile/filtres/verifier.swift
+          ./verifier filtres-sortie
+          python3 Toile/filtres/convertir.py --retirer filtres-sortie
+      - name: Listes dans l'app
+        run: |
+          mkdir -p Toile/App/Filtres
+          cp filtres-sortie/manifeste.json filtres-sortie/*.json.deflate Toile/App/Filtres/
+          ls -l Toile/App/Filtres
+      - name: Installer XcodeGen
+        run: brew install xcodegen
+      - name: Générer le projet Xcode
+        working-directory: Toile
+        run: xcodegen generate
+      - name: Compiler pour iPhone (non signé)
+        run: |
+          xcodebuild -project Toile/Toile.xcodeproj -scheme Toile -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build-toile \
+            MARKETING_VERSION=0.1.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build-toile.log 2>&1 || {
+              echo "::group::Erreurs de compilation"
+              grep -E "error:" build-toile.log | sort -u | head -80
+              echo "::endgroup::"
+              tail -60 build-toile.log
+              exit 1
+            }
+          echo "Avertissements : $(grep -cE ' warning:' build-toile.log || true)"
+          grep -E " warning:" build-toile.log | sort -u | head -60 || true
+      - name: Fabriquer le fichier .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build-toile/Build/Products/Release-iphoneos/Toile.app Payload/
+          # Les listes du bloqueur doivent être dans l'app.
+          test -f Payload/Toile.app/Filtres/manifeste.json
+          ls Payload/Toile.app/Filtres
+          plutil -p Payload/Toile.app/Info.plist | grep -E "CFBundleIdentifier|CFBundleDisplayName|UsageDescription"
+          plutil -extract CFBundleDisplayName raw Payload/Toile.app/Info.plist | LC_ALL=C grep -qE '^[A-Za-z0-9 ]+$'
+          zip -qry Toile.ipa Payload
+          ls -lh Toile.ipa
+      - name: Garder le journal de compilation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-compilation-toile
+          path: build-toile.log
+          if-no-files-found: ignore
+      - name: Garder l'app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Toile-ipa
+          path: Toile.ipa
+      - name: Publier la version
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: toile-v0.1.${{ github.run_number }}
+          name: Toile 0.1.${{ github.run_number }}
+          make_latest: false
+          files: Toile.ipa
+          body: |
+            Version compilée automatiquement depuis ${{ github.sha }}.
+            À installer avec SideStore, dans la source « Sommeil et Gadget » : voir Toile/README.md.
+      - name: Ajouter Toile à la source SideStore
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DERNIERE=$(scripts/source_actuelle.sh base.json)
+          echo "Source mise à jour dans la version $DERNIERE"
+          scripts/completer_source.sh base.json
+          # Gadget doit rester dans la source : sinon on ne publie rien.
+          python3 scripts/source_sidestore.py Payload/Toile.app Toile.ipa "toile-v0.1.${{ github.run_number }}" source.json \
+            --base base.json --exiger com.gadget.boite
+          gh release upload "$DERNIERE" source.json --repo "$GITHUB_REPOSITORY" --clobber

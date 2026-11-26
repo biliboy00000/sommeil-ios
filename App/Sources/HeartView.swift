@@ -111,10 +111,10 @@ struct HeartView: View {
                 Chart(heart.intervals, id: \.time) { interval in
                     LineMark(x: .value("Temps", interval.time), y: .value("Pouls", 60 / interval.seconds))
                         .interpolationMethod(.monotone)
-                        .foregroundStyle(Palette.heart)
+                        .foregroundStyle(SommeilPalette.heart)
                     PointMark(x: .value("Temps", interval.time), y: .value("Pouls", 60 / interval.seconds))
                         .symbolSize(14)
-                        .foregroundStyle(Palette.heart)
+                        .foregroundStyle(SommeilPalette.heart)
                 }
                 .chartXAxis(.hidden)
                 .chartYScale(domain: .automatic(includesZero: false))
@@ -231,7 +231,7 @@ struct MonitorCard: View {
             HStack(alignment: .center, spacing: 14) {
                 Image(systemName: heart.state == .tracking ? "heart.fill" : "heart")
                     .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(heart.state == .tracking ? Palette.heart : Color.white.opacity(0.5))
+                    .foregroundStyle(heart.state == .tracking ? SommeilPalette.heart : Color.white.opacity(0.5))
                     .symbolEffect(.bounce, value: heart.beatCount)
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 44)
@@ -268,7 +268,7 @@ struct MonitorCard: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(LinearGradient(colors: [Palette.monitor, Color(red: 0.06, green: 0.09, blue: 0.11)],
+                .fill(LinearGradient(colors: [SommeilPalette.monitor, Color(red: 0.06, green: 0.09, blue: 0.11)],
                                      startPoint: .top, endPoint: .bottom))
         )
         .overlay(
@@ -360,7 +360,7 @@ struct HeartTrace: View {
                     let p = CGPoint(x: x(point.time), y: y(mode == .signal ? point.signal : point.envelope))
                     if i == 0 { path.move(to: p) } else { path.addLine(to: p) }
                 }
-                let color = heart.state == .tracking ? Palette.trace : Palette.trace.opacity(0.55)
+                let color = heart.state == .tracking ? SommeilPalette.trace : SommeilPalette.trace.opacity(0.55)
                 if mode == .pulse {
                     var area = path
                     area.addLine(to: CGPoint(x: x(visible[visible.count - 1].time), y: mid))
@@ -378,11 +378,11 @@ struct HeartTrace: View {
                 for beat in snapshot.beats where beat.time <= now {
                     let bx = x(beat.time - 0.04)
                     let marker = CGRect(x: bx - 3.5, y: 6, width: 7, height: 7)
-                    ctx.fill(Path(ellipseIn: marker), with: .color(Palette.heart))
+                    ctx.fill(Path(ellipseIn: marker), with: .color(SommeilPalette.heart))
                     var tick = Path()
                     tick.move(to: CGPoint(x: bx, y: 15))
                     tick.addLine(to: CGPoint(x: bx, y: size.height))
-                    ctx.stroke(tick, with: .color(Palette.heart.opacity(0.18)), lineWidth: 1)
+                    ctx.stroke(tick, with: .color(SommeilPalette.heart.opacity(0.18)), lineWidth: 1)
                 }
 
                 // Tête du tracé.

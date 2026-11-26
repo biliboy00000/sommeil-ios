@@ -20,3 +20,9 @@ Gadget/App/Info.plist
 build-gadget/
 Telecommande/serveur/config.json
 Telecommande/serveur/.venv/
+# Toile : projet généré par XcodeGen et listes du bloqueur fabriquées à la compilation.
+Toile/Toile.xcodeproj/
+Toile/App/Info.plist
+Toile/App/Filtres/
+filtres-sortie/
+build-toile/

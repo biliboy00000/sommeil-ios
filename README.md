@@ -24,10 +24,15 @@ Le plan complet : fiche « Refonte de l'app Sommeil : iPhone seul ».
   avec ses tests (simulations dont on connaît chaque battement).
 - `FORMAT.md` : description exacte des fichiers enregistrés.
 - `reference/` : les anciens programmes du PC (Python), gardés pour vérifier les calculs et le format.
-- `scripts/source_sidestore.py` : fabrique la source SideStore (Sommeil et Ciné) publiée avec chaque version.
+- `scripts/source_sidestore.py` : fabrique la source SideStore (« Sommeil et Gadget ») publiée avec chaque version.
 - `.github/workflows/compilation.yml` : compilation automatique sur un Mac de GitHub.
 - `Cine/` : **Ciné**, un appareil photo RAW au rendu pellicule cinéma (app séparée, même source SideStore) :
   voir [Cine/README.md](Cine/README.md). Compilé par `.github/workflows/cine.yml`.
+- `Gadget/` : **Gadget**, l'app qui réunit Sommeil, Ciné, Sonar et Télécommande (une seule place dans
+  SideStore) : voir [Gadget/README.md](Gadget/README.md). Depuis novembre 2026, Sommeil est publié
+  dans Gadget ; l'app Sommeil seule reste dans la source à sa version 0.4.26.
+- `Toile/` : **Toile**, un navigateur avec bloqueur de pubs, SponsorBlock et extras YouTube :
+  voir [Toile/README.md](Toile/README.md).
 
 ## Installer l'app
 
